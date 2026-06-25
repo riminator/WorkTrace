@@ -1,0 +1,67 @@
+Meeting Title: Honda Data Observability PoC – Weekly StandUp
+Date: 2025-01-27
+Time: 10:00 AM – 10:30 AM CST
+Platform: Microsoft Teams
+Organizer: akshay.mallireddy@ibm.com
+Attendees: Akshay Mallireddy (IBM), Priya Nair (Honda), James Wu (Honda), Sarah Chen (IBM)
+
+---
+
+TRANSCRIPT
+
+[10:00] Akshay Mallireddy: Good morning everyone. Let's get started. We have 30 minutes today so I'll keep it tight. Priya, do you want to kick us off with the status from Honda's side?
+
+[10:01] Priya Nair: Sure. So we finished setting up the data pipeline connections from our data lake to the observability layer last Thursday. We ran into some latency issues with the Kafka connectors — messages were being delayed by about 3 to 4 seconds — but James's team patched that over the weekend.
+
+[10:03] James Wu: Yeah, the fix was straightforward — we bumped the consumer group timeout and tuned the batch size. We're seeing sub-second latency now in staging. We still need to validate it in production but that's planned for Wednesday.
+
+[10:05] Akshay Mallireddy: That's great progress. Sarah, any updates on the IBM side with the Instana integration?
+
+[10:06] Sarah Chen: Yes, so we've got the Instana agent deployed on 6 of the 8 target nodes. The remaining two are behind a stricter firewall and we're waiting on the network team to open the required ports — 1444 and 42699. I've escalated that to the Honda IT team. Expected resolution is end of week.
+
+[10:09] Priya Nair: That's noted. I'll follow up with our IT security team today to expedite that.
+
+[10:10] Akshay Mallireddy: Perfect. Let's talk about the dashboard. Where are we on the Grafana setup?
+
+[10:11] James Wu: We have the base dashboards up showing infrastructure metrics — CPU, memory, disk I/O, network throughput. We haven't connected the application-level traces yet. That's blocked on the Instana agent rollout completing.
+
+[10:13] Sarah Chen: Once the last two nodes are done, I'd estimate about 2 days to wire up the traces and get the full APM view in Grafana. So realistically we're looking at early next week for a full demo-ready dashboard.
+
+[10:15] Akshay Mallireddy: Okay so let's pencil in a demo for next Monday, January 3rd, tentatively at 2 PM. I'll send a calendar invite. Does that work for everyone?
+
+[10:16] Priya Nair: Works for me.
+
+[10:16] James Wu: I'm good with that.
+
+[10:17] Sarah Chen: Works. I'll make sure the dashboard is polished by Friday EOD.
+
+[10:18] Akshay Mallireddy: Great. Let's talk risks. Anything we need to flag?
+
+[10:19] Priya Nair: The firewall issue is the main blocker right now. If IT can't get those ports open by Friday, the demo timeline slips.
+
+[10:20] James Wu: We also have a dependency on the production Kafka validation. If something unexpected comes up Wednesday, that could push us back a day or two.
+
+[10:21] Akshay Mallireddy: Noted. I'll add both as risks in the project tracker. Sarah, can you send me the port numbers and the justification doc so I can attach it to the IT ticket?
+
+[10:22] Sarah Chen: Will do — I'll send it over Slack by noon today.
+
+[10:23] Akshay Mallireddy: Okay, let's wrap up. Quick summary of action items:
+
+1. James Wu — validate Kafka connector fix in production on Wednesday.
+2. Priya Nair — follow up with Honda IT security today to expedite firewall port opening (ports 1444 and 42699).
+3. Sarah Chen — complete Instana agent deployment on remaining 2 nodes once ports are open; send firewall justification doc to Akshay by noon today; finalize Grafana dashboard by Friday EOD.
+4. Akshay Mallireddy — send demo calendar invite for Monday January 3rd at 2 PM; log firewall dependency as project risk.
+
+[10:27] Priya Nair: Sounds good. Thanks everyone.
+
+[10:27] James Wu: Thanks, talk soon.
+
+[10:27] Sarah Chen: Thanks!
+
+[10:28] Akshay Mallireddy: Thanks all. Talk next week.
+
+---
+
+Meeting Duration: 28 minutes
+Project: Honda
+Billable: Yes

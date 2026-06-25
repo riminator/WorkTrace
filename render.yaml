@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: knowledgebase-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: EMBED_PROVIDER
+        sync: false
+      - key: ZHIPU_API_KEY
+        sync: false
+      - key: ZHIPU_EMBED_MODEL
+        value: embedding-3
+      - key: EMBED_DIMENSIONS
+        value: "768"
+      - key: LLM_PROVIDER
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://open.bigmodel.cn/api/paas/v4
+      - key: OPENAI_CHAT_MODEL
+        value: glm-4-flash
+      - key: RAG_TOP_K
+        value: "5"
+      - key: TTT_DATABASE_URL
+        sync: false
+      - key: TTT_PGSSL
+        value: "true"

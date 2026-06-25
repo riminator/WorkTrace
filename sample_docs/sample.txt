@@ -1,0 +1,24 @@
+Introduction to Artificial Intelligence
+
+Artificial Intelligence (AI) is the simulation of human intelligence processes by machines,
+especially computer systems. These processes include learning, reasoning, and self-correction.
+
+Machine Learning is a subset of AI that gives systems the ability to automatically learn and
+improve from experience without being explicitly programmed. It focuses on developing computer
+programs that can access data and use it to learn for themselves.
+
+Deep Learning is a subfield of machine learning that uses neural networks with many layers
+(hence "deep") to analyze various factors of data. It is especially useful in areas such as
+image recognition, natural language processing, and speech recognition.
+
+Key AI Applications:
+- Healthcare: diagnosis assistance, drug discovery, patient monitoring
+- Finance: fraud detection, algorithmic trading, credit scoring
+- Transportation: self-driving cars, route optimization, traffic prediction
+- Education: personalized learning, automated grading, intelligent tutoring systems
+
+The Turing Test, proposed by Alan Turing in 1950, is a test of a machine's ability to exhibit
+intelligent behavior equivalent to, or indistinguishable from, that of a human.
+
+AI Ethics concerns the moral implications of developing and deploying AI systems. Key issues
+include bias in algorithms, privacy, transparency, accountability, and the future of work.
