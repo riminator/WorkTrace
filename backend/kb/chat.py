@@ -12,11 +12,12 @@ multi-turn context (the KB retrieval always uses only the latest question).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from kb.config import RAG_TOP_K
 from kb.llm import get_provider
-from kb.search import SearchResult, search
+from kb.search import SearchResult, get_most_recent_meeting_date, search
 
 SYSTEM_PROMPT = """\
 You are a helpful assistant with access to a personal knowledge base.
@@ -24,9 +25,27 @@ Answer the user's question using ONLY the context passages provided below.
 If the answer is not in the context, say you don't have that information.
 Be concise and cite the source filename when relevant.
 
+Important: When the user asks about their "last meeting", "latest meeting", or \
+"most recent meeting", treat the context passages as the answer — they have \
+already been filtered to the most recently dated meeting document in the knowledge base.
+Do not say you lack prior meeting data; summarise what is in the context.
+
 Context:
 {context}
 """
+
+# ── temporal intent detection ────────────────────────────────────────────────
+
+_TEMPORAL_PATTERNS = re.compile(
+    r"\b(last|latest|most recent|recent|newest|previous)\b.{0,30}\b(meeting|standup|stand-up|call|sync|session)\b"
+    r"|\b(meeting|standup|stand-up|call|sync|session)\b.{0,30}\b(last|latest|most recent|recent|newest|previous)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_temporal_meeting_query(question: str) -> bool:
+    """Return True if the question asks about the most recent / last meeting."""
+    return bool(_TEMPORAL_PATTERNS.search(question))
 
 
 @dataclass
@@ -67,11 +86,33 @@ def ask(
         question, top_k=top_k, file_type=file_type, source_filter=source_filter
     )
 
+    # 1b. Temporal intent — if the user asks about "last/latest/recent meeting",
+    #     find the most-recent meeting date and bubble those chunks to the front.
+    if _is_temporal_meeting_query(question):
+        most_recent_date = get_most_recent_meeting_date()
+        if most_recent_date:
+            primary = [r for r in results if r.doc_metadata.get("meeting_date") == most_recent_date]
+            secondary = [r for r in results if r.doc_metadata.get("meeting_date") != most_recent_date]
+            results = primary + secondary
+            if not primary:
+                extra = search(
+                    question,
+                    top_k=top_k * 2,
+                    file_type=file_type,
+                    source_filter=source_filter,
+                )
+                primary = [r for r in extra if r.doc_metadata.get("meeting_date") == most_recent_date]
+                secondary = [r for r in extra if r.doc_metadata.get("meeting_date") != most_recent_date]
+                results = (primary + secondary)[:top_k]
+
     # 2. Build context block
     context_parts = []
     for i, r in enumerate(results, 1):
         fname = r.source.split("/")[-1]
-        context_parts.append(f"[{i}] {fname} (chunk {r.chunk_index}, score {r.score:.3f}):\n{r.content}")
+        date_label = f", date {r.doc_metadata['meeting_date']}" if r.doc_metadata.get("meeting_date") else ""
+        context_parts.append(
+            f"[{i}] {fname} (chunk {r.chunk_index}{date_label}, score {r.score:.3f}):\n{r.content}"
+        )
     context = "\n\n".join(context_parts) if context_parts else "No relevant documents found."
 
     # 3. Build messages

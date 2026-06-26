@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Integer,
+    JSON,
     String,
     Text,
     create_engine,
@@ -45,6 +46,7 @@ class Document(Base):
     content = Column(Text, nullable=False)                       # raw text of this chunk
     embedding = Column(Vector(EMBED_DIMENSIONS), nullable=True)  # pgvector column
     created_at = Column(DateTime, default=datetime.utcnow)
+    doc_metadata = Column(JSON, nullable=True)                   # structured fields: meeting_date, title, etc.
 
 
 def init_db() -> None:
@@ -53,6 +55,12 @@ def init_db() -> None:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
     Base.metadata.create_all(bind=engine)
+    # Add doc_metadata column to existing tables that predate this migration
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_metadata JSONB"
+        ))
+        conn.commit()
 
 
 def get_session() -> Session:

@@ -4,7 +4,7 @@ Semantic search over the knowledge base using pgvector cosine similarity.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select, text
 
@@ -130,6 +130,7 @@ class SearchResult:
     content: str
     snippet: str   # short relevant excerpt from content
     score: float   # cosine similarity (1.0 = identical)
+    doc_metadata: dict = field(default_factory=dict)
 
 
 def search(
@@ -180,9 +181,34 @@ def search(
                 content=row.Document.content,
                 snippet=_extract_snippet(row.Document.content, query),
                 score=round(1.0 - float(row.distance), 4),
+                doc_metadata=row.Document.doc_metadata or {},
             )
             for row in rows
         ]
+    finally:
+        session.close()
+
+
+def get_most_recent_meeting_date() -> str | None:
+    """
+    Return the ISO-8601 date string of the most recently indexed meeting,
+    or None if no meetings with a parsed date are in the database.
+    """
+    init_db()
+    session = get_session()
+    try:
+        rows = session.execute(
+            text(
+                """
+                SELECT DISTINCT doc_metadata->>'meeting_date' AS meeting_date
+                FROM documents
+                WHERE doc_metadata->>'meeting_date' IS NOT NULL
+                ORDER BY doc_metadata->>'meeting_date' DESC
+                LIMIT 1
+                """
+            )
+        ).all()
+        return rows[0].meeting_date if rows else None
     finally:
         session.close()
 

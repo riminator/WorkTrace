@@ -45,13 +45,16 @@ def _already_indexed(session, source: str) -> bool:
     ).first() is not None
 
 
-def ingest(path: str | pathlib.Path, *, force: bool = False) -> None:
+def ingest(path: str | pathlib.Path, *, force: bool = False, source_name: str | None = None) -> None:
     """
     Ingest a single file or every supported file inside a directory.
 
     Args:
-        path:  File or directory path.
-        force: Re-index files that are already in the database.
+        path:        File or directory path.
+        force:       Re-index files that are already in the database.
+        source_name: Override the source key stored in the DB (e.g. the
+                     original upload filename instead of a temp path).
+                     Only used when *path* resolves to a single file.
     """
     init_db()
     root = pathlib.Path(path).expanduser().resolve()
@@ -77,14 +80,16 @@ def ingest(path: str | pathlib.Path, *, force: bool = False) -> None:
             progress.update(task, description=f"[cyan]{file_path.name}[/cyan]")
             session = get_session()
             try:
-                source_key = str(file_path)
+                # Use the caller-supplied name when ingesting a single uploaded
+                # file so the DB key is the original filename, not a temp path.
+                source_key = source_name if (source_name and len(files) == 1) else str(file_path)
 
                 if not force and _already_indexed(session, source_key):
                     console.print(f"  [dim]skip (already indexed):[/dim] {file_path.name}")
                     progress.advance(task)
                     continue
 
-                file_type, chunks = extract(file_path)
+                file_type, chunks, doc_meta = extract(file_path)
 
                 if not chunks:
                     console.print(f"  [yellow]no text extracted:[/yellow] {file_path.name}")
@@ -104,6 +109,7 @@ def ingest(path: str | pathlib.Path, *, force: bool = False) -> None:
                         chunk_index=idx,
                         content=chunk,
                         embedding=vector,
+                        doc_metadata=doc_meta if doc_meta else None,
                     )
                     session.add(doc)
 
