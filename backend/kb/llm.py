@@ -114,7 +114,7 @@ class OpenAIProvider(BaseLLMProvider):
 
 
 class WatsonxProvider(BaseLLMProvider):
-    """Calls watsonx.ai text generation endpoint via IAM auth."""
+    """Calls watsonx.ai chat endpoint via IAM auth."""
 
     def __init__(self) -> None:
         self._base = WATSONX_URL.rstrip("/")
@@ -140,24 +140,19 @@ class WatsonxProvider(BaseLLMProvider):
             raise NotImplementedError("watsonx streaming is not implemented")
 
         token = self._get_access_token()
-        prompt = "<|begin_of_text|>"
-        for message in messages:
-            role = "assistant" if message["role"] == "assistant" else "user"
-            prompt += f"<|start_header_id|>{role}<|end_header_id|>\n{message['content']}<|eot_id|>"
-        prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
-
         resp = httpx.post(
-            f"{self._base}/ml/v1/text/generation?version=2023-05-29",
+            f"{self._base}/ml/v1/text/chat?version=2023-05-29",
             json={
-                "model_id": self._model,
+                "messages": messages,
                 "project_id": self._project_id,
-                "input": prompt,
-                "parameters": {
-                    "decoding_method": "greedy",
-                    "max_new_tokens": 1024,
-                    "min_new_tokens": 1,
-                    "stop_sequences": ["<|eot_id|>"],
-                },
+                "model_id": self._model,
+                "frequency_penalty": 0,
+                "max_tokens": 2000,
+                "presence_penalty": 0,
+                "temperature": 0,
+                "top_p": 1,
+                "seed": None,
+                "stop": [],
             },
             headers={
                 "Authorization": f"Bearer {token}",
@@ -167,7 +162,7 @@ class WatsonxProvider(BaseLLMProvider):
             timeout=httpx.Timeout(120.0),
         )
         resp.raise_for_status()
-        return resp.json()["results"][0]["generated_text"].strip()
+        return resp.json()["choices"][0]["message"]["content"].strip()
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
