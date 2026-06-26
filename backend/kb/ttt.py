@@ -40,10 +40,24 @@ _TTT_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Separate pattern for meeting-history lookups that should pull TTT entries
+# even when the user isn't asking about hours/billing.
+_MEETING_HISTORY_PATTERNS = re.compile(
+    r"\b(before|prior|previous|earlier|other|another)\b.{0,40}\bmeetings?\b"
+    r"|\bmeetings?\b.{0,40}\b(before|prior|previous|earlier|other|another)\b"
+    r"|\ball (my |the )?meetings?\b"
+    r"|\blist (my |the )?meetings?\b"
+    r"|\bhow many meetings?\b"
+    r"|\bmeeting histor(y|ies)\b"
+    r"|\bprevious meetings?\b"
+    r"|\bearlier meetings?\b",
+    re.IGNORECASE,
+)
+
 
 def is_ttt_query(question: str) -> bool:
-    """Return True if the question is likely about TTT time entries."""
-    return bool(_TTT_PATTERNS.search(question))
+    """Return True if the question should pull from the TTT database."""
+    return bool(_TTT_PATTERNS.search(question) or _MEETING_HISTORY_PATTERNS.search(question))
 
 
 # ── date helpers ───────────────────────────────────────────────────────────────
@@ -83,14 +97,25 @@ def _date_range_from_question(question: str) -> tuple[date | None, date | None]:
 def _extract_project(question: str) -> str | None:
     """
     Pull an explicit project name out of the question.
-    Looks for patterns like 'for Honda', 'on Honda', 'project Honda'.
+    Looks for patterns like 'for Honda', 'on Honda', 'with Honda',
+    'Honda meeting', 'project Honda'.
     """
     m = re.search(
-        r"\b(?:for|on|project(?:\s+code)?)\s+([A-Za-z0-9_\-]+)",
+        r"\b(?:for|on|with|project(?:\s+code)?)\s+([A-Za-z0-9_\-]+)"
+        r"|([A-Za-z0-9_\-]+)\s+meeting",
         question,
         re.IGNORECASE,
     )
-    return m.group(1).strip() if m else None
+    if not m:
+        return None
+    # group(1) = preposition match, group(2) = "X meeting" match
+    val = (m.group(1) or m.group(2) or "").strip()
+    # Ignore common stop words that aren't project names
+    if val.lower() in {"the", "a", "an", "my", "this", "that", "last", "next",
+                        "previous", "prior", "earlier", "another", "other",
+                        "recent", "latest", "first", "second", "third"}:
+        return None
+    return val
 
 
 # ── query builder + runner ─────────────────────────────────────────────────────
@@ -134,7 +159,21 @@ def query_ttt(question: str, limit: int = 20) -> str:
     params: dict[str, Any] = {"start": start, "end": end, "limit": limit}
 
     # ── choose query shape ────────────────────────────────────────────────────
-    if re.search(r"\b(total|sum|how many hours?|how much time|aggregate)\b", q_lower):
+    if _MEETING_HISTORY_PATTERNS.search(question):
+        # List meeting entries with titles and dates so the LLM can reason about
+        # which meetings exist and which came before/after others.
+        sql = """
+            SELECT project_code, task_type, entry_date,
+                   duration_minutes, meeting_title,
+                   LEFT(description, 400) AS description
+            FROM time_entries
+            WHERE task_type = 'meeting'
+              AND entry_date BETWEEN %(start)s AND %(end)s
+            {project_filter}
+            ORDER BY entry_date DESC
+            LIMIT %(limit)s
+        """
+    elif re.search(r"\b(total|sum|how many hours?|how much time|aggregate)\b", q_lower):
         # Aggregated totals by project
         sql = """
             SELECT
