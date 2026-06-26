@@ -113,7 +113,7 @@ async def upload_file(
         tmp_path = pathlib.Path(tmp.name)
 
     try:
-        ingest(tmp_path, force=force)
+        ingest(tmp_path, force=force, source_name=file.filename)
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -179,7 +179,7 @@ async def ingest_meeting(
         tmp_path = pathlib.Path(tmp.name)
 
     try:
-        ingest(tmp_path, force=force)
+        ingest(tmp_path, force=force, source_name=file.filename)
     finally:
         tmp_path.unlink(missing_ok=True)
 

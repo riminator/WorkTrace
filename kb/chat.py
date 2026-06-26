@@ -25,6 +25,11 @@ Answer the user's question using ONLY the context passages provided below.
 If the answer is not in the context, say you don't have that information.
 Be concise and cite the source filename when relevant.
 
+Important: When the user asks about their "last meeting", "latest meeting", or \
+"most recent meeting", treat the context passages as the answer — they have \
+already been filtered to the most recently dated meeting document in the knowledge base.
+Do not say you lack prior meeting data; summarise what is in the context.
+
 Context:
 {context}
 """
