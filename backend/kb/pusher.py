@@ -19,9 +19,8 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import kb.config as _config  # noqa: F401 — ensures .env is loaded via config's load_dotenv
 
@@ -38,47 +37,25 @@ _HOURS_RE    = re.compile(r"(\d+(?:\.\d+)?)\s*(?:hour|hr|h)\b", re.IGNORECASE)
 # Matches "10:00 AM", "14:30", "2:45 PM" etc.
 _TIME_RE = re.compile(r"(\d{1,2}:\d{2})\s*(AM|PM)?", re.IGNORECASE)
 
-# Common timezone abbreviation → IANA mapping
-_TZ_MAP = {
-    "CST": "America/Chicago",
-    "CDT": "America/Chicago",
-    "EST": "America/New_York",
-    "EDT": "America/New_York",
-    "MST": "America/Denver",
-    "MDT": "America/Denver",
-    "PST": "America/Los_Angeles",
-    "PDT": "America/Los_Angeles",
-    "UTC": "UTC",
-}
-
 
 def _parse_time_range(time_str: str, entry_date: date) -> tuple[datetime | None, datetime | None]:
     """
     Parse a time range string like "10:00 AM – 10:30 AM CST" or "14:00 – 14:45"
-    into (start_time, end_time) aware datetimes using entry_date as the date part.
+    into (start_time, end_time) naive datetimes (no timezone conversion) so the
+    TTT displays the wall-clock time exactly as written in the meeting header.
     Returns (None, None) if parsing fails.
     """
-    # Extract timezone abbreviation
-    tz = timezone.utc
-    for abbr, iana in _TZ_MAP.items():
-        if abbr in time_str.upper():
-            try:
-                tz = ZoneInfo(iana)
-            except ZoneInfoNotFoundError:
-                pass
-            break
-
     times = _TIME_RE.findall(time_str)
     if not times:
         return None, None
 
-    def _to_dt(hhmm: str, ampm: str | None) -> datetime | None:
+    def _to_dt(hhmm: str, ampm: str) -> datetime | None:
         try:
-            fmt = "%I:%M %p" if ampm else "%H:%M"
-            t_str = f"{hhmm} {ampm.upper()}" if ampm else hhmm
+            fmt = "%I:%M %p" if ampm.strip() else "%H:%M"
+            t_str = f"{hhmm} {ampm.strip().upper()}" if ampm.strip() else hhmm
             t = datetime.strptime(t_str, fmt)
             return datetime(entry_date.year, entry_date.month, entry_date.day,
-                            t.hour, t.minute, tzinfo=tz)
+                            t.hour, t.minute)
         except ValueError:
             return None
 
