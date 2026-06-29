@@ -18,8 +18,6 @@ To add a new provider:
 from __future__ import annotations
 
 import abc
-import random
-import time
 from typing import Generator
 
 import httpx
@@ -142,54 +140,29 @@ class WatsonxProvider(BaseLLMProvider):
             raise NotImplementedError("watsonx streaming is not implemented")
 
         token = self._get_access_token()
-
-        max_retries = 3
-        base_delay = 20.0  # seconds — watsonx quota windows are typically 60s
-
-        for attempt in range(max_retries):
-            resp = httpx.post(
-                f"{self._base}/ml/v1/text/chat?version=2023-05-29",
-                json={
-                    "messages": messages,
-                    "project_id": self._project_id,
-                    "model_id": self._model,
-                    "frequency_penalty": 0,
-                    "max_tokens": 2000,
-                    "presence_penalty": 0,
-                    "temperature": 0,
-                    "top_p": 1,
-                    "seed": None,
-                    "stop": [],
-                },
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                timeout=httpx.Timeout(120.0),
-            )
-
-            if resp.status_code != 429:
-                resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"].strip()
-
-            # 429 — respect Retry-After if present, else exponential backoff + jitter
-            retry_after = resp.headers.get("Retry-After")
-            print(f"[watsonx] 429 on attempt {attempt + 1}/{max_retries}. Retry-After={retry_after!r} headers={dict(resp.headers)}")
-
-            if attempt == max_retries - 1:
-                resp.raise_for_status()  # re-raise on final attempt
-
-            if retry_after and retry_after.isdigit():
-                delay = float(retry_after)
-            else:
-                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-
-            print(f"[watsonx] sleeping {delay:.1f}s before retry {attempt + 2}")
-            time.sleep(delay)
-
-        # unreachable — the final attempt always raises inside the loop
-        raise RuntimeError("max retries exceeded")  # pragma: no cover
+        resp = httpx.post(
+            f"{self._base}/ml/v1/text/chat?version=2023-05-29",
+            json={
+                "messages": messages,
+                "project_id": self._project_id,
+                "model_id": self._model,
+                "frequency_penalty": 0,
+                "max_tokens": 600,
+                "presence_penalty": 0,
+                "temperature": 0,
+                "top_p": 1,
+                "seed": None,
+                "stop": [],
+            },
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            timeout=httpx.Timeout(120.0),
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────

@@ -203,11 +203,10 @@ def summarize_meeting(req: SummarizeMeetingRequest) -> IngestMeetingResponse:
     Called as a second step after POST /ingest-meeting succeeds.
     """
     summary_question = (
-        "Summarise this meeting. Include: main topics discussed, key decisions, "
-        "action items, attendees if mentioned, and the total duration in minutes."
+        "In 3-5 sentences summarise this meeting: topics discussed, decisions made, action items."
     )
     try:
-        rag_result = kb_ask(summary_question, source_filter=req.filename)
+        rag_result = kb_ask(summary_question, source_filter=req.filename, top_k=3)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 429:
             raise HTTPException(
