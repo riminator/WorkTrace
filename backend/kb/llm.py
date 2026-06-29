@@ -143,8 +143,8 @@ class WatsonxProvider(BaseLLMProvider):
 
         token = self._get_access_token()
 
-        max_retries = 4
-        base_delay = 5.0  # seconds
+        max_retries = 3
+        base_delay = 20.0  # seconds — watsonx quota windows are typically 60s
 
         for attempt in range(max_retries):
             resp = httpx.post(

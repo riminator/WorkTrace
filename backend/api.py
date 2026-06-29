@@ -14,6 +14,7 @@ import shutil
 import tempfile
 from typing import Annotated
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -205,7 +206,15 @@ def summarize_meeting(req: SummarizeMeetingRequest) -> IngestMeetingResponse:
         "Summarise this meeting. Include: main topics discussed, key decisions, "
         "action items, attendees if mentioned, and the total duration in minutes."
     )
-    rag_result = kb_ask(summary_question, source_filter=req.filename)
+    try:
+        rag_result = kb_ask(summary_question, source_filter=req.filename)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            raise HTTPException(
+                status_code=503,
+                detail="The AI provider is rate-limited right now. Wait 30–60 seconds and try again.",
+            )
+        raise
 
     ttt_id: str | None = None
     ttt_error: str | None = None

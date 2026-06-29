@@ -31,12 +31,23 @@ export async function deleteSource(source) {
   return res.json();
 }
 
+async function throwApiError(res) {
+  let msg;
+  try {
+    const body = await res.json();
+    msg = body?.detail || JSON.stringify(body);
+  } catch {
+    msg = await res.text();
+  }
+  throw new Error(msg);
+}
+
 export async function ingestMeeting({ file, force = false }) {
   const form = new FormData();
   form.append("file", file);
   form.append("force", force);
   const res = await fetch(`${BASE}/ingest-meeting`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -51,7 +62,7 @@ export async function summarizeMeeting({ filename, project_code, organizer, atte
       attendees:    attendees   || null,
     }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
