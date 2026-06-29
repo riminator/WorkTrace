@@ -31,4 +31,4 @@ services:
       - key: TTT_PGSSL
         value: "true"
       - key: WATSONX_MODEL_ID
-        value: ibm-granite/granite-4.0-h-small
+        value: ibm/granite-4-h-small

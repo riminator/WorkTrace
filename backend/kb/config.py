@@ -49,7 +49,7 @@ OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "llama-3.1-8b-instant")
 WATSONX_API_KEY: str = os.getenv("WATSONX_API_KEY", "")
 WATSONX_URL: str = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
 WATSONX_PROJECT_ID: str = os.getenv("WATSONX_PROJECT_ID", "")
-WATSONX_MODEL_ID: str = os.getenv("WATSONX_MODEL_ID", "ibm-granite/granite-4.0-h-small")
+WATSONX_MODEL_ID: str = os.getenv("WATSONX_MODEL_ID", "ibm/granite-4-h-small")
 
 # RAG settings
 RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "5"))
