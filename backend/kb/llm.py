@@ -18,6 +18,8 @@ To add a new provider:
 from __future__ import annotations
 
 import abc
+import random
+import time
 from typing import Generator
 
 import httpx
@@ -140,29 +142,51 @@ class WatsonxProvider(BaseLLMProvider):
             raise NotImplementedError("watsonx streaming is not implemented")
 
         token = self._get_access_token()
-        resp = httpx.post(
-            f"{self._base}/ml/v1/text/chat?version=2023-05-29",
-            json={
-                "messages": messages,
-                "project_id": self._project_id,
-                "model_id": self._model,
-                "frequency_penalty": 0,
-                "max_tokens": 2000,
-                "presence_penalty": 0,
-                "temperature": 0,
-                "top_p": 1,
-                "seed": None,
-                "stop": [],
-            },
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            timeout=httpx.Timeout(120.0),
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
+
+        max_retries = 4
+        base_delay = 5.0  # seconds
+
+        for attempt in range(max_retries):
+            resp = httpx.post(
+                f"{self._base}/ml/v1/text/chat?version=2023-05-29",
+                json={
+                    "messages": messages,
+                    "project_id": self._project_id,
+                    "model_id": self._model,
+                    "frequency_penalty": 0,
+                    "max_tokens": 2000,
+                    "presence_penalty": 0,
+                    "temperature": 0,
+                    "top_p": 1,
+                    "seed": None,
+                    "stop": [],
+                },
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                timeout=httpx.Timeout(120.0),
+            )
+
+            if resp.status_code != 429:
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"].strip()
+
+            # 429 — respect Retry-After if present, else exponential backoff + jitter
+            if attempt == max_retries - 1:
+                resp.raise_for_status()  # re-raise on final attempt
+
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after and retry_after.isdigit():
+                delay = float(retry_after)
+            else:
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+
+            time.sleep(delay)
+
+        # unreachable, but satisfies type checker
+        raise httpx.HTTPStatusError("max retries exceeded", request=resp.request, response=resp)
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
