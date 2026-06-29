@@ -100,6 +100,18 @@ class IngestMeetingResponse(BaseModel):
     ttt_error: str | None = None
 
 
+class IngestMeetingIngestResponse(BaseModel):
+    status: str
+    filename: str
+
+
+class SummarizeMeetingRequest(BaseModel):
+    filename: str
+    project_code: str | None = None
+    organizer: str | None = None
+    attendees: str | None = None
+
+
 # ── routes ───────────────────────────────────────────────────────────────────
 
 @app.post("/upload", summary="Upload and ingest a file")
@@ -160,18 +172,15 @@ def chat(req: ChatRequest) -> ChatResponseOut:
     )
 
 
-@app.post("/ingest-meeting", response_model=IngestMeetingResponse, summary="Ingest meeting file and push to Time Task Tracker")
+@app.post("/ingest-meeting", response_model=IngestMeetingIngestResponse, summary="Ingest meeting file into the knowledge base")
 async def ingest_meeting(
     file: Annotated[UploadFile, File(description="Meeting transcript or notes file")],
     force: Annotated[bool, Form()] = False,
-    project_code: Annotated[str | None, Form()] = None,
-    organizer: Annotated[str | None, Form()] = None,
-    attendees: Annotated[str | None, Form()] = None,
-) -> IngestMeetingResponse:
+) -> IngestMeetingIngestResponse:
     """
-    1. Ingest the uploaded file into pgvector (same as /upload).
-    2. Run RAG to produce a structured meeting summary.
-    3. Push the summary as a time entry to the Time Task Tracker on Neon.
+    Ingest the uploaded file into pgvector (same as /upload).
+    Call POST /summarize-meeting next to generate the summary and push to TTT.
+    Split into two requests so each stays well under the 30-second server timeout.
     """
     suffix = pathlib.Path(file.filename or "upload").suffix or ".bin"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -183,23 +192,30 @@ async def ingest_meeting(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    # Ask the RAG pipeline to summarise the meeting
+    return IngestMeetingIngestResponse(status="ok", filename=file.filename or "upload")
+
+
+@app.post("/summarize-meeting", response_model=IngestMeetingResponse, summary="Summarize an ingested meeting and push to Time Task Tracker")
+def summarize_meeting(req: SummarizeMeetingRequest) -> IngestMeetingResponse:
+    """
+    Run RAG summarization on an already-ingested meeting file and push the result to TTT.
+    Called as a second step after POST /ingest-meeting succeeds.
+    """
     summary_question = (
         "Summarise this meeting. Include: main topics discussed, key decisions, "
         "action items, attendees if mentioned, and the total duration in minutes."
     )
-    rag_result = kb_ask(summary_question)
+    rag_result = kb_ask(summary_question, source_filter=req.filename)
 
-    # Push to Time Task Tracker
     ttt_id: str | None = None
     ttt_error: str | None = None
     try:
         pushed = push_meeting_entry(
-            filename=file.filename or "meeting",
+            filename=req.filename,
             summary=rag_result.answer,
-            project_code=project_code or None,
-            organizer=organizer or None,
-            attendees=attendees or None,
+            project_code=req.project_code or None,
+            organizer=req.organizer or None,
+            attendees=req.attendees or None,
         )
         ttt_id = pushed.get("id")
     except Exception as exc:
@@ -207,7 +223,7 @@ async def ingest_meeting(
 
     return IngestMeetingResponse(
         status="ok",
-        filename=file.filename or "meeting",
+        filename=req.filename,
         answer=rag_result.answer,
         sources=[ChatSourceOut(**s) for s in rag_result.sources],
         ttt_entry_id=ttt_id,

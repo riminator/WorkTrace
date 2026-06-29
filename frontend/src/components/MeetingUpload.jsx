@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { ingestMeeting } from "../api";
+import { ingestMeeting, summarizeMeeting } from "../api";
 
 function formatBytes(b) {
   if (b < 1024) return `${b} B`;
@@ -14,7 +14,7 @@ export default function MeetingUpload() {
   const [organizer, setOrganizer]   = useState("");
   const [attendees, setAttendees]   = useState("");
   const [force, setForce]           = useState(false);
-  const [status, setStatus]         = useState("idle"); // idle | loading | done | error
+  const [status, setStatus]         = useState("idle"); // idle | ingesting | summarizing | done | error
   const [result, setResult]         = useState(null);
   const [error, setError]           = useState(null);
 
@@ -35,13 +35,25 @@ export default function MeetingUpload() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!file) return;
-    setStatus("loading");
     setError(null);
     setResult(null);
+
+    // Step 1 — fast: just ingest the file into the knowledge base
+    setStatus("ingesting");
+    let ingestData;
     try {
-      const data = await ingestMeeting({
-        file,
-        force,
+      ingestData = await ingestMeeting({ file, force });
+    } catch (err) {
+      setError(err.message);
+      setStatus("error");
+      return;
+    }
+
+    // Step 2 — slow: RAG summarization + TTT push (separate request to avoid timeout)
+    setStatus("summarizing");
+    try {
+      const data = await summarizeMeeting({
+        filename:     ingestData.filename,
         project_code: projectCode || undefined,
         organizer:    organizer   || undefined,
         attendees:    attendees   || undefined,
@@ -142,11 +154,13 @@ export default function MeetingUpload() {
           <button
             className="btn btn-primary"
             onClick={handleSubmit}
-            disabled={!file || status === "loading"}
+            disabled={!file || status === "ingesting" || status === "summarizing"}
           >
-            {status === "loading" ? "Processing…" : "Ingest & Push to TTT"}
+            {status === "ingesting"   ? "Uploading…"   :
+             status === "summarizing" ? "Summarizing…" :
+             "Ingest & Push to TTT"}
           </button>
-          {status !== "idle" && (
+          {status !== "idle" && status !== "ingesting" && status !== "summarizing" && (
             <button className="btn btn-outline" onClick={handleReset}>
               Reset
             </button>
@@ -156,12 +170,31 @@ export default function MeetingUpload() {
               type="checkbox"
               checked={force}
               onChange={(e) => setForce(e.target.checked)}
-              disabled={status === "loading"}
+              disabled={status === "ingesting" || status === "summarizing"}
             />
             Re-index if already uploaded
           </label>
         </div>
       </div>
+
+      {/* In-progress status */}
+      {(status === "ingesting" || status === "summarizing") && (
+        <div className="card" style={{ borderLeft: "4px solid var(--accent)" }}>
+          <div style={{ fontSize: 13, color: "var(--muted)" }}>
+            <span style={{ marginRight: 8 }}>
+              {status === "ingesting" ? "⬆️" : "🧠"}
+            </span>
+            <strong style={{ color: "var(--text)" }}>
+              {status === "ingesting" ? "Step 1 of 2 — Uploading & indexing…" : "Step 2 of 2 — Generating summary…"}
+            </strong>
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              {status === "ingesting"
+                ? "Extracting text, creating embeddings, storing in knowledge base."
+                : "Running RAG over the indexed content and pushing to Time Task Tracker. This may take 30–60 seconds."}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Result */}
       {status === "done" && result && (

@@ -31,14 +31,26 @@ export async function deleteSource(source) {
   return res.json();
 }
 
-export async function ingestMeeting({ file, force = false, project_code, organizer, attendees }) {
+export async function ingestMeeting({ file, force = false }) {
   const form = new FormData();
   form.append("file", file);
   form.append("force", force);
-  if (project_code) form.append("project_code", project_code);
-  if (organizer)    form.append("organizer", organizer);
-  if (attendees)    form.append("attendees", attendees);
   const res = await fetch(`${BASE}/ingest-meeting`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function summarizeMeeting({ filename, project_code, organizer, attendees }) {
+  const res = await fetch(`${BASE}/summarize-meeting`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename,
+      project_code: project_code || null,
+      organizer:    organizer   || null,
+      attendees:    attendees   || null,
+    }),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
