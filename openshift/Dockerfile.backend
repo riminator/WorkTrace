@@ -1,0 +1,32 @@
+# openshift/Dockerfile.backend
+# Build from the repo root:
+#   docker build -f openshift/Dockerfile.backend -t knowledgebase-backend:latest ./backend
+
+FROM python:3.11-slim
+
+# System deps:
+#   libpq-dev      — psycopg2-binary
+#   tesseract-ocr  — pytesseract (document extraction)
+#   libmagic1      — python-magic (file type detection)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    tesseract-ocr \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# OpenShift runs containers as a random non-root UID in the root group (GID 0).
+# chown root group + chmod g=u lets any UID in group 0 read/write app files.
+RUN chown -R 0:0 /app && chmod -R g=u /app
+
+USER 1001
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

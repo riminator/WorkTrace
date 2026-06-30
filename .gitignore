@@ -36,3 +36,5 @@ frontend/dist/
 
 # Sample / test meeting files
 sample_meeting*.txt
+
+openshift/secret.yaml

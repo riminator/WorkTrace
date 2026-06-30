@@ -1,0 +1,96 @@
+# openshift/frontend.yaml
+# Deployment + ClusterIP Service + OpenShift Route for the React/Vite frontend.
+# nginx serves the static build on port 8080 and proxies /api/* to the backend.
+#
+# Apply:
+#   oc apply -f openshift/frontend.yaml
+#
+# Replace the image value and the Route host before applying.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledgebase-frontend
+  labels:
+    app: knowledgebase-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledgebase-frontend
+  template:
+    metadata:
+      labels:
+        app: knowledgebase-frontend
+    spec:
+      containers:
+        - name: frontend
+          # Replace with your registry — see README.md for build + push commands
+          image: your-registry/knowledgebase-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledgebase-frontend
+  labels:
+    app: knowledgebase-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: knowledgebase-frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: knowledgebase
+  labels:
+    app: knowledgebase-frontend
+spec:
+  # Replace with your actual cluster apps domain, or remove to let OpenShift assign one
+  # host: knowledgebase.apps.your-cluster.com
+  to:
+    kind: Service
+    name: knowledgebase-frontend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

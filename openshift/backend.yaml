@@ -1,0 +1,83 @@
+# openshift/backend.yaml
+# Deployment + ClusterIP Service for the FastAPI backend.
+# The Service is only reachable inside the cluster (nginx proxies to it).
+#
+# Apply:
+#   oc apply -f openshift/backend.yaml
+#
+# Replace the image value with your actual registry path before applying.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledgebase-backend
+  labels:
+    app: knowledgebase-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledgebase-backend
+  template:
+    metadata:
+      labels:
+        app: knowledgebase-backend
+    spec:
+      containers:
+        - name: api
+          # Replace with your registry — see README.md for build + push commands
+          image: your-registry/knowledgebase-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          # Inject all secrets as environment variables
+          envFrom:
+            - secretRef:
+                name: knowledgebase-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledgebase-backend
+  labels:
+    app: knowledgebase-backend
+spec:
+  # ClusterIP — internal only, nginx proxies to this
+  type: ClusterIP
+  selector:
+    app: knowledgebase-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
