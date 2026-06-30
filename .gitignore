@@ -30,3 +30,6 @@ recordings/
 *.wav
 *.mp4
 frontend/dist/
+
+# Bob AI workspace
+.bob/
