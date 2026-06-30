@@ -59,5 +59,6 @@ TTT_DATABASE_URL: str = os.getenv("TTT_DATABASE_URL", "")
 TTT_PGSSL: bool = os.getenv("TTT_PGSSL", "true").lower() == "true"
 
 # ── Supabase Auth ─────────────────────────────────────────────────────────────
-# SUPABASE_JWT_SECRET — found in Supabase dashboard → Project Settings → API → JWT Secret
-SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
+# Both found in Supabase dashboard → Project Settings → API
+SUPABASE_URL: str        = os.getenv("SUPABASE_URL", "")         # e.g. https://xyz.supabase.co
+SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")  # JWT Secret (HS256 fallback)
