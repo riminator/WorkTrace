@@ -75,8 +75,8 @@ def _row_to_dict(row: dict) -> dict:
         "status":          row.get("status") or "logged",
         "organizer":       row.get("organizer"),
         "attendees":       row.get("attendees"),
-        "createdAt":       _iso(row.get("created_at")),
-        "updatedAt":       _iso(row.get("updated_at")),
+        "createdAt":       None,
+        "updatedAt":       None,
     }
 
 
@@ -343,7 +343,7 @@ def list_entries(
             conditions.append("project_code = %s"); params.append(project_code)
         where = " AND ".join(conditions)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM time_entries WHERE {where} ORDER BY entry_date DESC, created_at DESC", params)
+            cur.execute(f"SELECT * FROM time_entries WHERE {where} ORDER BY entry_date DESC", params)
             return [_row_to_dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
