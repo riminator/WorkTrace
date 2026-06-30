@@ -40,7 +40,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(256), nullable=True, index=True)     # Supabase auth.uid() — nullable for migration
+    user_id = Column(String(36), nullable=True, index=True)      # Supabase auth.uid() UUID string
     source = Column(String(1024), nullable=False, index=True)    # original file path
     file_type = Column(String(64), nullable=False)               # pdf / txt / image / docx / …
     chunk_index = Column(Integer, nullable=False, default=0)     # position within the source file
@@ -62,7 +62,7 @@ def init_db() -> None:
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_metadata JSONB"
         ))
         conn.execute(text(
-            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id VARCHAR(256)"
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"
         ))
         conn.commit()
 
