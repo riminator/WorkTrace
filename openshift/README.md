@@ -67,7 +67,7 @@ docker build \
   -f openshift/Dockerfile.frontend \
   --build-arg VITE_API_URL=/api \
   -t $REGISTRY/knowledgebase-frontend:latest \
-  ./frontend
+  .
 docker push $REGISTRY/knowledgebase-frontend:latest
 ```
 

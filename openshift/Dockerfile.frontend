@@ -1,10 +1,13 @@
 # openshift/Dockerfile.frontend
 # Build from the repo root:
-#   docker build -f openshift/Dockerfile.frontend \
-#     --build-arg VITE_API_URL=https://api.your-cluster.com \
-#     -t knowledgebase-frontend:latest ./frontend
+#   docker buildx build -f openshift/Dockerfile.frontend \
+#     --platform linux/amd64,linux/arm64 \
+#     --build-arg VITE_API_URL=/api \
+#     --build-arg VITE_SUPABASE_URL=https://your-project-ref.supabase.co \
+#     --build-arg VITE_SUPABASE_ANON_KEY=your-anon-key \
+#     -t knowledgebase-frontend:latest --push .
 #
-# VITE_API_URL is baked in at build time by Vite.
+# VITE_* vars are baked in at build time by Vite — they must be passed here.
 # Option A — nginx internal proxy (recommended):
 #   --build-arg VITE_API_URL=/api
 #   (nginx.conf proxies /api/* to the backend ClusterIP)
@@ -15,13 +18,19 @@ FROM node:20-slim AS build
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
 
-COPY . .
+COPY frontend/ .
 
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+
+ARG VITE_SUPABASE_URL
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
 RUN npm run build
 
