@@ -54,6 +54,22 @@ function formatDate(d) {
   return new Date(y, mo - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function formatDateFull(d) {
+  if (!d) return "";
+  const [y, mo, day] = d.split("T")[0].split("-").map(Number);
+  return new Date(y, mo - 1, day).toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric", year: "numeric" });
+}
+
+function formatTime(t) {
+  if (!t) return null;
+  // t may be "HH:MM:SS" or "HH:MM"
+  const [hh, mm] = t.split(":");
+  const h = parseInt(hh, 10);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${mm} ${suffix}`;
+}
+
 function TaskTypePill({ type }) {
   const map = {
     meeting:  { bg: "#eff6ff", color: "#1d4ed8" },
@@ -76,11 +92,120 @@ function TaskTypePill({ type }) {
   );
 }
 
+function DetailRow({ label, value }) {
+  if (!value && value !== 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
+      <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{value}</div>
+    </div>
+  );
+}
+
+function EntryDrawer({ entry, onClose }) {
+  if (!entry) return null;
+
+  const startFmt = formatTime(entry.startTime);
+  const endFmt   = formatTime(entry.endTime);
+  const timeRange = startFmt && endFmt ? `${startFmt} – ${endFmt}` : startFmt || null;
+
+  const attendeeList = entry.attendees
+    ? entry.attendees.split(",").map(a => a.trim()).filter(Boolean)
+    : [];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0,
+          background: "rgba(0,0,0,0.25)",
+          zIndex: 40,
+        }}
+      />
+      {/* Drawer */}
+      <div style={{
+        position: "fixed",
+        top: 0, right: 0, bottom: 0,
+        width: 360,
+        background: "var(--bg)",
+        borderLeft: "1px solid var(--border)",
+        zIndex: 50,
+        display: "flex",
+        flexDirection: "column",
+        overflowY: "auto",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "18px 20px 14px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", lineHeight: 1.3, marginBottom: 6 }}>
+              {entry.meetingTitle || "Untitled"}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <TaskTypePill type={entry.taskType} />
+              {entry.billable && (
+                <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: "#f0fdf4", color: "#15803d", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Billable
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none", border: "none",
+              cursor: "pointer", color: "var(--muted)",
+              fontSize: 18, lineHeight: 1,
+              padding: "2px 4px", flexShrink: 0,
+            }}
+            aria-label="Close"
+          >✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "4px 20px 24px", flex: 1 }}>
+          <DetailRow label="Date"     value={formatDateFull(entry.date)} />
+          <DetailRow label="Duration" value={formatDuration(entry.durationMinutes)} />
+          {timeRange && <DetailRow label="Time"     value={timeRange} />}
+          <DetailRow label="Project"  value={entry.projectCode} />
+          <DetailRow label="Organizer" value={entry.organizer} />
+          {attendeeList.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Attendees</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
+                {attendeeList.map((a, i) => (
+                  <div key={i} style={{ fontSize: 13, color: "var(--text)" }}>{a}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          {entry.description && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Summary / Notes</div>
+              <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.6, marginTop: 2, whiteSpace: "pre-wrap" }}>
+                {entry.description}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function TTTDashboard({ token }) {
-  const [summary, setSummary]   = useState(null);
-  const [recent,  setRecent]    = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error,   setError]     = useState(null);
+  const [summary,       setSummary]     = useState(null);
+  const [recent,        setRecent]      = useState([]);
+  const [loading,       setLoading]     = useState(true);
+  const [error,         setError]       = useState(null);
+  const [selectedEntry, setSelectedEntry] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -93,10 +218,9 @@ export default function TTTDashboard({ token }) {
         const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
         const end   = now.toISOString().split("T")[0];
         const monthEntries = entries.filter(e => e.date >= start && e.date <= end);
-        const totalMin    = monthEntries.reduce((s, e) => s + e.durationMinutes, 0);
-        const billableMin = monthEntries.filter(e => e.billable).reduce((s, e) => s + e.durationMinutes, 0);
-        const projects    = [...new Set(monthEntries.map(e => e.projectCode))];
-        const byProject   = Object.entries(
+        const totalMin  = monthEntries.reduce((s, e) => s + e.durationMinutes, 0);
+        const projects  = [...new Set(monthEntries.map(e => e.projectCode))];
+        const byProject = Object.entries(
           monthEntries.reduce((acc, e) => {
             acc[e.projectCode] = (acc[e.projectCode] || 0) + e.durationMinutes;
             return acc;
@@ -106,10 +230,9 @@ export default function TTTDashboard({ token }) {
           .map(([project, mins]) => ({ project, hours: mins / 60 }));
 
         setSummary({
-          totalHours:    totalMin / 60,
-          billableHours: billableMin / 60,
-          totalEntries:  monthEntries.length,
-          projectCount:  projects.length,
+          totalHours:   totalMin / 60,
+          totalEntries: monthEntries.length,
+          projectCount: projects.length,
           byProject,
         });
       } catch (e) {
@@ -128,12 +251,11 @@ export default function TTTDashboard({ token }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-        <StatCard accent label="Hours this month" value={summary.totalHours.toFixed(1)} sub="billable + non-billable" />
-        <StatCard label="Billable hours"   value={summary.billableHours.toFixed(1)} sub="this month" />
-        <StatCard label="Total entries"    value={summary.totalEntries} sub="this month" />
-        <StatCard label="Active projects"  value={summary.projectCount} sub="this month" />
+      {/* Stat cards — 3 columns */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <StatCard accent label="Hours this month" value={summary.totalHours.toFixed(1)} sub="all time this month" />
+        <StatCard label="Total entries"   value={summary.totalEntries} sub="this month" />
+        <StatCard label="Active projects" value={summary.projectCount} sub="this month" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -145,14 +267,23 @@ export default function TTTDashboard({ token }) {
           {recent.length === 0
             ? <p className="empty">No entries yet.</p>
             : recent.map((e, i) => (
-              <div key={e.id} style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "9px 0",
-                borderBottom: i < recent.length - 1 ? "1px solid var(--border)" : "none",
-                gap: 10,
-              }}>
+              <div
+                key={e.id}
+                onClick={() => setSelectedEntry(e)}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "9px 8px",
+                  borderRadius: 6,
+                  borderBottom: i < recent.length - 1 ? "1px solid var(--border)" : "none",
+                  gap: 10,
+                  cursor: "pointer",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={ev => ev.currentTarget.style.background = "var(--surface)"}
+                onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}
+              >
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{
                     fontSize: 13,
@@ -215,6 +346,8 @@ export default function TTTDashboard({ token }) {
           }
         </div>
       </div>
+
+      <EntryDrawer entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
     </div>
   );
 }
