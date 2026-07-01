@@ -35,7 +35,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from kb.auth import get_current_user
-from kb.config import TTT_DATABASE_URL
+from kb.config import TTT_DATABASE_URL, TTT_PGSSL
 
 router = APIRouter(prefix="/ttt", tags=["ttt"])
 
@@ -44,7 +44,8 @@ router = APIRouter(prefix="/ttt", tags=["ttt"])
 def _get_conn():
     if not TTT_DATABASE_URL:
         raise HTTPException(status_code=503, detail="TTT_DATABASE_URL is not configured.")
-    return psycopg2.connect(TTT_DATABASE_URL, sslmode="require")
+    sslmode = "require" if TTT_PGSSL else "disable"
+    return psycopg2.connect(TTT_DATABASE_URL, sslmode=sslmode)
 
 
 def _row_to_dict(row: dict) -> dict:
