@@ -8,12 +8,13 @@ function authHeaders(token, extra = {}) {
 }
 
 async function throwApiError(res) {
+  const text = await res.text();
   let msg;
   try {
-    const body = await res.json();
+    const body = JSON.parse(text);
     msg = body?.detail || JSON.stringify(body);
   } catch {
-    msg = await res.text();
+    msg = text;
   }
   throw new Error(msg);
 }
