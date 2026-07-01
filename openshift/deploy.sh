@@ -124,6 +124,17 @@ oc rollout status statefulset/knowledgebase-postgres --timeout=120s
 echo "  ✓ Postgres ready"
 echo ""
 
+# ── Auto-restore from latest backup if one exists ─────────────────────────────
+LATEST_BACKUP=$(ls -t "$REPO_ROOT"/kb_backup_*.sql 2>/dev/null | head -1 || true)
+if [[ -n "$LATEST_BACKUP" ]]; then
+  echo "  Found backup: $(basename "$LATEST_BACKUP")"
+  echo "  Restoring data..."
+  PG_POD=$(oc get pod -l app=knowledgebase-postgres -o jsonpath='{.items[0].metadata.name}')
+  oc exec -i "$PG_POD" -- psql -U postgres vector < "$LATEST_BACKUP"
+  echo "  ✓ Data restored from $(basename "$LATEST_BACKUP")"
+  echo ""
+fi
+
 # Build the in-cluster DATABASE_URL from the postgres-credentials secret
 PG_PASS=$(oc get secret postgres-credentials -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
 DATABASE_URL="postgresql://postgres:${PG_PASS}@knowledgebase-postgres:5432/vector"

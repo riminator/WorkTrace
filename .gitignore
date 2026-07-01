@@ -41,3 +41,4 @@ openshift/secret.yaml
 
 testopenshift/test
 openshift/deploy.env
+kb_backup_*.sql
