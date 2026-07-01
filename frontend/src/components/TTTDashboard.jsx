@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getEntries } from "../tttApi";
+import { getEntries, updateEntry } from "../tttApi";
 
 const PROJECT_COLORS = [
   "#2563eb", "#7c3aed", "#0891b2", "#059669",
@@ -66,8 +66,13 @@ function DetailRow({ label, value }) {
   );
 }
 
-function EntryDrawer({ entry, onClose }) {
+const TASK_TYPES = ["meeting","development","planning","review","admin","learning","other"];
+
+function EntryDrawer({ entry, token, onClose, onSaved }) {
   if (!entry) return null;
+
+  const [editing, setEditing] = useState(false);
+  const [saving,  setSaving]  = useState(false);
 
   const startFmt = formatTime(entry.startTime);
   const endFmt   = formatTime(entry.endTime);
@@ -76,6 +81,31 @@ function EntryDrawer({ entry, onClose }) {
   const attendeeList = entry.attendees
     ? entry.attendees.split(",").map(a => a.trim()).filter(Boolean)
     : [];
+
+  async function handleEditSave(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const updates = {
+      date:            fd.get("date"),
+      durationMinutes: parseFloat(fd.get("duration")) * 60,
+      meetingTitle:    fd.get("title"),
+      projectCode:     fd.get("project"),
+      taskType:        fd.get("taskType"),
+      description:     fd.get("description"),
+      startTime:       fd.get("startTime") ? `${fd.get("date")}T${fd.get("startTime")}:00Z` : null,
+      endTime:         fd.get("endTime")   ? `${fd.get("date")}T${fd.get("endTime")}:00Z`   : null,
+    };
+    setSaving(true);
+    try {
+      await updateEntry(entry.id, updates, token);
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <>
@@ -92,7 +122,7 @@ function EntryDrawer({ entry, onClose }) {
       <div style={{
         position: "fixed",
         top: "var(--header-h)", right: 0, bottom: 0,
-        width: 360,
+        width: 380,
         background: "var(--bg)",
         borderLeft: "1px solid var(--border)",
         zIndex: 50,
@@ -133,32 +163,98 @@ function EntryDrawer({ entry, onClose }) {
           >✕</button>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: "4px 20px 24px", flex: 1 }}>
-          <DetailRow label="Date"     value={formatDateFull(entry.date)} />
-          <DetailRow label="Duration" value={formatDuration(entry.durationMinutes)} />
-          {timeRange && <DetailRow label="Time"     value={timeRange} />}
-          <DetailRow label="Project"  value={entry.projectCode} />
-          <DetailRow label="Organizer" value={entry.organizer} />
-          {attendeeList.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Attendees</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
-                {attendeeList.map((a, i) => (
-                  <div key={i} style={{ fontSize: 13, color: "var(--text)" }}>{a}</div>
-                ))}
+        {/* Body — detail view */}
+        {!editing && (
+          <>
+            <div style={{ padding: "4px 20px 8px", flex: 1 }}>
+              <DetailRow label="Date"     value={formatDateFull(entry.date)} />
+              <DetailRow label="Duration" value={formatDuration(entry.durationMinutes)} />
+              {timeRange && <DetailRow label="Time"     value={timeRange} />}
+              <DetailRow label="Project"  value={entry.projectCode} />
+              <DetailRow label="Organizer" value={entry.organizer} />
+              {attendeeList.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Attendees</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
+                    {attendeeList.map((a, i) => (
+                      <div key={i} style={{ fontSize: 13, color: "var(--text)" }}>{a}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {entry.description && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Summary / Notes</div>
+                  <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.6, marginTop: 2, whiteSpace: "pre-wrap" }}>
+                    {entry.description}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Edit button at the bottom */}
+            <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border)" }}>
+              <button
+                className="btn btn-primary"
+                style={{ width: "100%" }}
+                onClick={() => setEditing(true)}
+              >
+                Edit entry
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Body — edit form */}
+        {editing && (
+          <form onSubmit={handleEditSave} style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label className="filter-label">Date</label>
+                <input name="date" type="date" className="input" defaultValue={entry.date?.split("T")[0]} required />
+              </div>
+              <div>
+                <label className="filter-label">Duration (hrs)</label>
+                <input name="duration" type="number" step="0.25" min="0.25" className="input" defaultValue={(entry.durationMinutes / 60).toFixed(2)} required />
+              </div>
+              <div>
+                <label className="filter-label">Start time</label>
+                <input name="startTime" type="time" className="input" defaultValue={entry.startTime ? new Date(entry.startTime).toISOString().slice(11,16) : ""} />
+              </div>
+              <div>
+                <label className="filter-label">End time</label>
+                <input name="endTime" type="time" className="input" defaultValue={entry.endTime ? new Date(entry.endTime).toISOString().slice(11,16) : ""} />
               </div>
             </div>
-          )}
-          {entry.description && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 0" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Summary / Notes</div>
-              <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.6, marginTop: 2, whiteSpace: "pre-wrap" }}>
-                {entry.description}
+            <div>
+              <label className="filter-label">Title</label>
+              <input name="title" type="text" className="input" defaultValue={entry.meetingTitle || ""} required />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label className="filter-label">Project</label>
+                <input name="project" type="text" className="input" defaultValue={entry.projectCode} required />
+              </div>
+              <div>
+                <label className="filter-label">Task type</label>
+                <select name="taskType" className="select" style={{ width: "100%" }} defaultValue={entry.taskType}>
+                  {TASK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
             </div>
-          )}
-        </div>
+            <div>
+              <label className="filter-label">Description</label>
+              <textarea name="description" className="input" rows={4} style={{ resize: "vertical", width: "100%" }} defaultValue={entry.description || ""} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: "auto", paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+              <button type="submit" className="btn btn-primary" disabled={saving} style={{ flex: 1 }}>
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </>
   );
@@ -500,7 +596,15 @@ export default function TTTDashboard({ token }) {
         </div>
       </div>
 
-      <EntryDrawer entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
+      <EntryDrawer
+        entry={selectedEntry}
+        token={token}
+        onClose={() => setSelectedEntry(null)}
+        onSaved={async () => {
+          const entries = await getEntries({}, token);
+          setAllEntries(entries);
+        }}
+      />
     </div>
   );
 }
