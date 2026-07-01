@@ -1,0 +1,115 @@
+# openshift/postgres.yaml
+# pgvector StatefulSet + Service for in-cluster Postgres.
+# Uses Ceph RBD (default storage class) for persistent storage.
+#
+# Apply:
+#   oc apply -f openshift/postgres.yaml
+#
+# Connection string (use this as DATABASE_URL in your secret):
+#   postgresql://postgres:<POSTGRES_PASSWORD>@knowledgebase-postgres:5432/vector
+#
+# The service is ClusterIP — only reachable inside the cluster.
+
+# ── Secret: Postgres credentials ─────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: changeme        # ← change this before applying
+  POSTGRES_DB: vector
+---
+# ── PersistentVolumeClaim: 10 Gi on Ceph RBD ─────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ocs-storagecluster-ceph-rbd   # default on your cluster
+  resources:
+    requests:
+      storage: 10Gi       # change to 20Gi / 50Gi as needed — no quota limit
+---
+# ── StatefulSet ───────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: knowledgebase-postgres
+  labels:
+    app: knowledgebase-postgres
+spec:
+  serviceName: knowledgebase-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledgebase-postgres
+  template:
+    metadata:
+      labels:
+        app: knowledgebase-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "vector"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "vector"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+# ── Service: ClusterIP — internal only ───────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledgebase-postgres
+  labels:
+    app: knowledgebase-postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: knowledgebase-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP

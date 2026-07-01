@@ -39,11 +39,11 @@ set +o allexport
 REQUIRED=(
   REGISTRY OC_SERVER OC_TOKEN OC_PROJECT
   VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY
-  DATABASE_URL TTT_DATABASE_URL TTT_PGSSL
   SUPABASE_URL SUPABASE_JWT_SECRET
   EMBED_PROVIDER NOMIC_API_KEY NOMIC_EMBED_MODEL EMBED_DIMENSIONS
   LLM_PROVIDER WATSONX_API_KEY WATSONX_URL WATSONX_PROJECT_ID WATSONX_MODEL_ID
   RAG_TOP_K
+  POSTGRES_PASSWORD
 )
 MISSING=()
 for VAR in "${REQUIRED[@]}"; do
@@ -59,12 +59,12 @@ fi
 
 echo ""
 echo "══════════════════════════════════════════════════════"
-echo "  KnowledgeBase → OpenShift Deploy"
+echo "  WorkTrace → OpenShift Deploy"
 echo "══════════════════════════════════════════════════════"
 echo ""
 
 # ── Step 1: Build and push images ─────────────────────────────────────────────
-echo "▶ [1/4] Building and pushing images to $REGISTRY"
+echo "▶ [1/5] Building and pushing images to $REGISTRY"
 echo ""
 
 cd "$REPO_ROOT"
@@ -94,7 +94,7 @@ echo "  ✓ Images pushed"
 echo ""
 
 # ── Step 2: Log into OpenShift ────────────────────────────────────────────────
-echo "▶ [2/4] Logging into OpenShift"
+echo "▶ [2/5] Logging into OpenShift"
 oc login --token="$OC_TOKEN" --server="$OC_SERVER"
 
 # Create or switch to the project
@@ -106,8 +106,32 @@ fi
 echo "  ✓ Logged in → project: $OC_PROJECT"
 echo ""
 
-# ── Step 3: Apply secret ──────────────────────────────────────────────────────
-echo "▶ [3/4] Applying secrets"
+# ── Step 3: Deploy in-cluster Postgres (pgvector) ────────────────────────────
+echo "▶ [3/5] Deploying in-cluster Postgres"
+
+# Create/update the postgres credentials secret from deploy.env
+oc create secret generic postgres-credentials \
+  --from-literal=POSTGRES_USER=postgres \
+  --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  --from-literal=POSTGRES_DB=vector \
+  --dry-run=client -o yaml | oc apply -f -
+
+oc apply -f "$SCRIPT_DIR/postgres.yaml"
+
+# Wait for Postgres to be ready before the backend tries to connect
+echo "  Waiting for Postgres to be ready..."
+oc rollout status statefulset/knowledgebase-postgres --timeout=120s
+echo "  ✓ Postgres ready"
+echo ""
+
+# Build the in-cluster DATABASE_URL from the postgres-credentials secret
+PG_PASS=$(oc get secret postgres-credentials -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+DATABASE_URL="postgresql://postgres:${PG_PASS}@knowledgebase-postgres:5432/vector"
+TTT_DATABASE_URL="postgresql://postgres:${PG_PASS}@knowledgebase-postgres:5432/vector?sslmode=disable"
+TTT_PGSSL="false"
+
+# ── Step 4: Apply secret ──────────────────────────────────────────────────────
+echo "▶ [4/5] Applying secrets"
 oc create secret generic knowledgebase-secrets \
   --from-literal=DATABASE_URL="$DATABASE_URL" \
   --from-literal=TTT_DATABASE_URL="$TTT_DATABASE_URL" \
@@ -128,8 +152,8 @@ oc create secret generic knowledgebase-secrets \
 echo "  ✓ Secret applied"
 echo ""
 
-# ── Step 4: Deploy ────────────────────────────────────────────────────────────
-echo "▶ [4/4] Deploying to OpenShift"
+# ── Step 5: Deploy app ────────────────────────────────────────────────────────
+echo "▶ [5/5] Deploying to OpenShift"
 oc apply -f "$SCRIPT_DIR/backend.yaml"
 oc apply -f "$SCRIPT_DIR/frontend.yaml"
 
