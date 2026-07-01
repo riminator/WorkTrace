@@ -162,36 +162,52 @@ export default function TTTEntries({ token }) {
 
       {/* Edit modal */}
       {editing && (
-        <div className="modal active" onClick={e => e.target.className.includes("modal") && setEditing(null)}>
-          <div className="modal-content" style={{ maxWidth: 480 }}>
+        <div className="modal active" onClick={e => e.target === e.currentTarget && setEditing(null)}>
+          <div className="modal-content" style={{ maxWidth: 500 }}>
             <div className="modal-header">
               <h3>Edit Entry</h3>
               <button className="modal-close" onClick={() => setEditing(null)}>×</button>
             </div>
             <form onSubmit={handleEditSave} className="entry-form">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div><label className="filter-label">Date</label>
-                  <input name="date" type="date" className="input" defaultValue={editing.date?.split("T")[0]} required /></div>
-                <div><label className="filter-label">Duration (hrs)</label>
-                  <input name="duration" type="number" step="0.25" min="0.25" className="input" defaultValue={(editing.durationMinutes / 60).toFixed(2)} required /></div>
-                <div><label className="filter-label">Start time</label>
-                  <input name="startTime" type="time" className="input" defaultValue={editing.startTime ? new Date(editing.startTime).toISOString().slice(11,16) : ""} /></div>
-                <div><label className="filter-label">End time</label>
-                  <input name="endTime" type="time" className="input" defaultValue={editing.endTime ? new Date(editing.endTime).toISOString().slice(11,16) : ""} /></div>
+              <div className="form-grid">
+                <div className="form-field">
+                  <label className="filter-label">Date</label>
+                  <input name="date" type="date" className="input" defaultValue={editing.date?.split("T")[0]} required />
+                </div>
+                <div className="form-field">
+                  <label className="filter-label">Duration (hrs)</label>
+                  <input name="duration" type="number" step="0.25" min="0.25" className="input" defaultValue={(editing.durationMinutes / 60).toFixed(2)} required />
+                </div>
+                <div className="form-field">
+                  <label className="filter-label">Start time</label>
+                  <input name="startTime" type="time" className="input" defaultValue={editing.startTime ? new Date(editing.startTime).toISOString().slice(11,16) : ""} />
+                </div>
+                <div className="form-field">
+                  <label className="filter-label">End time</label>
+                  <input name="endTime" type="time" className="input" defaultValue={editing.endTime ? new Date(editing.endTime).toISOString().slice(11,16) : ""} />
+                </div>
               </div>
-              <div style={{ marginTop: 8 }}><label className="filter-label">Title</label>
-                <input name="title" type="text" className="input" defaultValue={editing.meetingTitle || ""} required /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                <div><label className="filter-label">Project</label>
-                  <input name="project" type="text" className="input" defaultValue={editing.projectCode} required /></div>
-                <div><label className="filter-label">Task type</label>
-                  <select name="taskType" className="select" defaultValue={editing.taskType}>
+              <div className="form-field" style={{ marginTop: 10 }}>
+                <label className="filter-label">Title</label>
+                <input name="title" type="text" className="input" defaultValue={editing.meetingTitle || ""} required />
+              </div>
+              <div className="form-grid" style={{ marginTop: 10 }}>
+                <div className="form-field">
+                  <label className="filter-label">Project</label>
+                  <input name="project" type="text" className="input" defaultValue={editing.projectCode} required />
+                </div>
+                <div className="form-field">
+                  <label className="filter-label">Task type</label>
+                  <select name="taskType" className="select" style={{ width: "100%" }} defaultValue={editing.taskType}>
                     {TASK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select></div>
+                  </select>
+                </div>
               </div>
-              <div style={{ marginTop: 8 }}><label className="filter-label">Description</label>
-                <textarea name="description" className="input" rows={2} defaultValue={editing.description || ""} /></div>
-              <div className="upload-actions" style={{ marginTop: 12 }}>
+              <div className="form-field" style={{ marginTop: 10 }}>
+                <label className="filter-label">Description</label>
+                <textarea name="description" className="input" rows={3} style={{ resize: "vertical", width: "100%" }} defaultValue={editing.description || ""} />
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button type="submit" className="btn btn-primary">Save</button>
                 <button type="button" className="btn btn-outline" onClick={() => setEditing(null)}>Cancel</button>
               </div>
