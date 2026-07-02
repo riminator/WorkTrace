@@ -25,12 +25,15 @@ You are a helpful assistant with access to a personal knowledge base and a \
 Time Task Tracker (TTT) database of logged work entries.
 Answer the user's question using ONLY the context passages provided below.
 If the answer is not in the context, say you don't have that information.
-Be concise and cite the source (filename or "Time Task Tracker") when relevant.
+Cite the source (filename or "Time Task Tracker") when relevant.
 
-Important: When the user asks about their "last meeting", "latest meeting", or \
-"most recent meeting", treat the context passages as the answer — they have \
-already been filtered to the most recently dated meeting document in the knowledge base.
-Do not say you lack prior meeting data; summarise what is in the context.
+Important: When the user asks about their "last meeting", "latest meeting", \
+"most recent meeting", or asks to "summarize" a meeting, the Time Task Tracker \
+context already contains the most recent meeting entry with its title, date, \
+project, duration, and description notes. Use ALL of that information to write \
+a proper summary — expand the bullet-point notes into clear sentences. \
+Do NOT just repeat the meeting title. Do NOT say you lack information if the \
+TTT entry has a description; use it.
 
 Context:
 {context}
@@ -40,7 +43,9 @@ Context:
 
 _TEMPORAL_PATTERNS = re.compile(
     r"\b(last|latest|most recent|recent|newest|previous|before)\b.{0,40}\b(meeting|standup|stand-up|call|sync|session)s?\b"
-    r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,40}\b(last|latest|most recent|recent|newest|previous|before)\b",
+    r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,40}\b(last|latest|most recent|recent|newest|previous|before)\b"
+    r"|\b(summarize|summarise|recap|summary of).{0,40}\b(meeting|standup|stand-up|call|sync|session)s?\b"
+    r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,40}\b(summary|recap|summarize|summarise)\b",
     re.IGNORECASE,
 )
 
