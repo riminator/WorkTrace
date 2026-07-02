@@ -16,12 +16,14 @@ A component-by-component breakdown of how WorkTrace works under the hood.
 8. [RAG chat pipeline](#8-rag-chat-pipeline)
 9. [LLM provider abstraction](#9-llm-provider-abstraction)
 10. [Meeting intelligence pipeline](#10-meeting-intelligence-pipeline)
-11. [Time Task Tracker — write path](#11-time-task-tracker--write-path)
-12. [Time Task Tracker — read path (chat context)](#12-time-task-tracker--read-path-chat-context)
-13. [TTT REST API](#13-ttt-rest-api)
-14. [Frontend architecture](#14-frontend-architecture)
-15. [OpenShift deployment](#15-openshift-deployment)
-16. [File reference](#16-file-reference)
+11. [Agentic meeting summariser](#11-agentic-meeting-summariser)
+12. [Chat feedback loop](#12-chat-feedback-loop)
+13. [Time Task Tracker — write path](#13-time-task-tracker--write-path)
+14. [Time Task Tracker — read path (chat context)](#14-time-task-tracker--read-path-chat-context)
+15. [TTT REST API](#15-ttt-rest-api)
+16. [Frontend architecture](#16-frontend-architecture)
+17. [OpenShift deployment](#17-openshift-deployment)
+18. [File reference](#18-file-reference)
 
 ---
 
@@ -97,6 +99,23 @@ Written to by [`backend/kb/pusher.py`](backend/kb/pusher.py) and managed by [`ba
 | `status` | `TEXT` | `logged` (default) |
 | `organizer` | `TEXT` | Meeting organizer |
 | `attendees` | `TEXT` | Comma-separated attendee list |
+
+### `chat_feedback` table (TTT DB)
+
+Stores chat response ratings for the feedback loop. Created via `init_db()` using `CREATE TABLE IF NOT EXISTS`.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `VARCHAR(36)` PK | UUID string |
+| `user_id` | `VARCHAR(36)` | Supabase user UUID |
+| `question` | `TEXT` | The user's question |
+| `answer` | `TEXT` | The LLM-generated answer that was rated |
+| `sources` | `JSONB` | Array of source objects `{source, score, chunk_index}` used in the answer |
+| `rating` | `SMALLINT` | `1` = thumbs up, `-1` = thumbs down |
+| `note` | `TEXT` | Optional free-text note (reserved for future UI) |
+| `created_at` | `TIMESTAMPTZ` | Timestamp of rating |
+
+An index on `(user_id)` makes the stats query fast.
 
 ---
 
@@ -387,7 +406,7 @@ Parameters: `temperature=0`, `max_tokens=600`, `frequency_penalty=0`, `presence_
 
 Files: [`backend/api.py`](backend/api.py) · [`backend/kb/extractors.py`](backend/kb/extractors.py) · [`backend/kb/pusher.py`](backend/kb/pusher.py)
 
-This pipeline is split across two HTTP requests to avoid the 30-second response timeout on Render free-tier (the LLM call alone takes 15–25 s). The same split also benefits OpenShift ingress timeout settings.
+This pipeline is split across two HTTP requests to avoid the 30-second response timeout (the LLM call alone takes 15–25 s).
 
 ### Request 1 — `POST /ingest-meeting`
 
@@ -424,7 +443,75 @@ Receives `{filename, project_code, organizer, attendees}` as JSON.
 
 ---
 
-## 11. Time Task Tracker — write path
+## 11. Agentic meeting summariser
+
+File: [`backend/api.py`](backend/api.py) — `POST /agentic-meeting`
+
+After a transcript has been ingested (via `POST /ingest-meeting`), the agentic endpoint runs a deterministic 5-step tool-call pipeline. Unlike the standard single-pass RAG, it gathers context from multiple sources before calling the LLM:
+
+| Step | Tool name | Implementation | What it does |
+|---|---|---|---|
+| 1 | `search_kb` | `kb_search(query, source_filter=filename)` | Retrieves the top-5 transcript chunks |
+| 2 | `lookup_ttt` | `query_ttt(f"recent meetings for project {project}", force_meetings=True)` | Fetches past meeting entries for historical context |
+| 3 | `classify` | `_classify(filename, organizer)` (from `ttt_api`) | Infers project code, task type, billable flag |
+| 4 | `synthesise` | `get_provider().chat(messages)` | LLM call with all gathered context (chunks + TTT history) |
+| 5 | `push_ttt` | `push_meeting_entry(…)` | Inserts the time entry into `time_entries` |
+
+Every step's input and output is recorded as an `AgentStep` object and returned in the response. The frontend renders these as a collapsible **Agent trace** panel with icons, tool names, and truncated I/O.
+
+### Why this teaches agentic patterns
+
+This is a **fixed-order, tool-augmented** agent — not a free-form ReAct loop, but the same conceptual building block. Each step corresponds to a tool call with explicit inputs and outputs. The LLM only runs once (step 4) after all context is gathered, which avoids cascading errors from intermediate reasoning. This pattern maps directly to production systems that pre-fetch structured data before calling an LLM.
+
+---
+
+## 12. Chat feedback loop
+
+Files: [`backend/api.py`](backend/api.py) · [`backend/kb/db.py`](backend/kb/db.py) · [`frontend/src/components/Chat.jsx`](frontend/src/components/Chat.jsx) · [`frontend/src/components/FeedbackStats.jsx`](frontend/src/components/FeedbackStats.jsx)
+
+### Write path (`POST /feedback`)
+
+Each assistant message in the Chat UI carries 👍/👎 buttons. On click, the frontend calls `POST /feedback` with:
+- `question` — the user's query
+- `answer` — the full LLM response
+- `sources` — the retrieved source list (for context on why the answer may have been poor)
+- `rating` — `1` or `-1`
+
+The backend inserts a row into `chat_feedback` using the user's `user_id` from the JWT. Once rated, buttons are replaced with a confirmation message and cannot be re-clicked for the same message (session-local state).
+
+### Read path (`GET /feedback/stats`)
+
+Returns aggregated statistics for the Feedback tab:
+
+```json
+{
+  "total": 42,
+  "thumbsUp": 35,
+  "thumbsDown": 7,
+  "score": 83.3,
+  "lowRated": [
+    {
+      "id": "…",
+      "question": "What did we decide about the pricing model?",
+      "answer": "I don't have that information.",
+      "sources": [],
+      "note": null,
+      "createdAt": "2025-07-14T10:22:00+00:00"
+    }
+  ]
+}
+```
+
+### Why this teaches RLHF patterns
+
+The `chat_feedback` table is the data collection layer of a human feedback loop. The low-rated query log in the Feedback tab surfaces exactly what a real RLHF workflow uses for annotation: the original question, the model's answer, and the retrieved context that was available. These can be used to:
+- Identify knowledge gaps (questions with no relevant chunks → upload missing docs)
+- Tune the system prompt (consistently wrong answer style)
+- Improve retrieval (relevant chunks not retrieved → adjust chunk size or top-K)
+
+---
+
+## 13. Time Task Tracker — write path
 
 File: [`backend/kb/pusher.py`](backend/kb/pusher.py)
 
@@ -449,7 +536,7 @@ Defaults to 60 minutes if nothing is found.
 
 ---
 
-## 12. Time Task Tracker — read path (chat context)
+## 14. Time Task Tracker — read path (chat context)
 
 File: [`backend/kb/ttt.py`](backend/kb/ttt.py)
 
@@ -471,7 +558,7 @@ Results are formatted as a readable text block prepended with `[Time Task Tracke
 
 ---
 
-## 13. TTT REST API
+## 15. TTT REST API
 
 File: [`backend/ttt_api.py`](backend/ttt_api.py)
 
@@ -492,6 +579,22 @@ Mounted at `/ttt`. All routes require a valid Supabase JWT and scope every query
 | `/ttt/projects` | `GET` | List all distinct project codes for the user |
 | `/ttt/classify` | `POST` | Infer project code and billable flag from a meeting title |
 
+### KB routes (mounted on app root in `api.py`)
+
+| Route | Method | Description |
+|---|---|---|
+| `/upload` | `POST` | Ingest a file into pgvector |
+| `/search` | `POST` | Semantic search |
+| `/sources` | `GET` | List indexed sources |
+| `/sources` | `DELETE` | Delete a source |
+| `/chat` | `POST` | RAG chatbot |
+| `/ingest-meeting` | `POST` | Ingest meeting transcript (step 1) |
+| `/summarize-meeting` | `POST` | Standard RAG summarise + push to TTT (step 2) |
+| `/agentic-meeting` | `POST` | Agentic 5-step summarise + push to TTT (step 2 alternative) |
+| `/feedback` | `POST` | Store a chat response rating (1 or -1) |
+| `/feedback/stats` | `GET` | Approval score, total counts, low-rated query log |
+| `/health` | `GET` | Health check (no auth) |
+
 ### CSV import format
 
 Accepted column names are flexible (case-insensitive, normalised). Minimum required: a date column and a duration column. Optional: `meeting_title`, `project_code`, `task_type`, `billable`, `description`, `organizer`, `attendees`.
@@ -508,11 +611,11 @@ Parses `VEVENT` blocks. `DTSTART`/`DTEND` provide start time, end time, and date
 
 ---
 
-## 14. Frontend architecture
+## 16. Frontend architecture
 
 Files: [`frontend/src/`](frontend/src/)
 
-Single-page React application built with Vite. All API communication goes through [`frontend/src/api.js`](frontend/src/api.js) (KB routes) and [`frontend/src/tttApi.js`](frontend/src/tttApi.js) (TTT routes). Both attach `Authorization: Bearer {token}` to every request.
+Single-page React application built with Vite. All API communication goes through [`frontend/src/api.js`](frontend/src/api.js) (KB + feedback + agentic routes) and [`frontend/src/tttApi.js`](frontend/src/tttApi.js) (TTT routes). Both attach `Authorization: Bearer {token}` to every request.
 
 ### Auth flow
 
@@ -531,11 +634,12 @@ If the session is `null` (logged out), [`App.jsx`](frontend/src/App.jsx) renders
 
 | Component | Responsibility |
 |---|---|
-| `Chat.jsx` | Multi-turn conversation UI. Maintains `history` array locally. Renders user/assistant bubbles, collapsible source citations, thinking state. |
+| `Chat.jsx` | Multi-turn conversation UI. Renders user/assistant bubbles, collapsible source citations, thinking state. Each assistant message has 👍/👎 feedback buttons; rating is stored via `POST /feedback` and the button state flips to a confirmation. |
 | `Search.jsx` | Semantic search form with file type filter, source substring filter, top-K control. Snippet cards with expand-to-full-chunk toggle. |
 | `Upload.jsx` | react-dropzone multi-file queue. Per-file upload status, force re-index checkbox. |
-| `MeetingUpload.jsx` | Two-phase upload: calls `/ingest-meeting` (fast), then `/summarize-meeting` (slow LLM). Shows step indicators. Displays summary, source chunks, TTT entry ID, and TTT push errors. |
+| `MeetingUpload.jsx` | Two-phase upload. **Mode toggle**: Standard RAG (calls `/summarize-meeting`) or Agentic (calls `/agentic-meeting`). In agentic mode, an Agent trace panel renders each tool call with icon, input, and truncated output. |
 | `Sources.jsx` | Table of all indexed sources with chunk counts. Per-row delete with confirmation. |
+| `FeedbackStats.jsx` | Feedback dashboard. Fetches `/feedback/stats`, renders 4 stat tiles (total, 👍, 👎, score %), a proportional progress bar, and an expandable log of every low-rated query with its full question, model answer, and sources. |
 
 ### TTT components
 
@@ -551,13 +655,16 @@ If the session is `null` (logged out), [`App.jsx`](frontend/src/App.jsx) renders
 
 ```javascript
 // KB API — api.js
-uploadFile(file, force, token)            // POST /upload
-searchDocs({ query, top_k, … }, token)    // POST /search
-chatWithKB({ question, history, … }, token) // POST /chat
-getSources(token)                         // GET /sources
-deleteSource(source, token)               // DELETE /sources?source=…
-ingestMeeting({ file, force }, token)     // POST /ingest-meeting
-summarizeMeeting({ filename, … }, token)  // POST /summarize-meeting
+uploadFile(file, force, token)                          // POST /upload
+searchDocs({ query, top_k, … }, token)                  // POST /search
+chatWithKB({ question, history, … }, token)             // POST /chat
+getSources(token)                                       // GET /sources
+deleteSource(source, token)                             // DELETE /sources?source=…
+ingestMeeting({ file, force }, token)                   // POST /ingest-meeting
+summarizeMeeting({ filename, … }, token)                // POST /summarize-meeting
+agenticMeeting({ filename, … }, token)                  // POST /agentic-meeting
+submitFeedback({ question, answer, sources, rating }, token) // POST /feedback
+getFeedbackStats(token, limit)                          // GET /feedback/stats
 
 // TTT API — tttApi.js
 getEntries({ startDate, endDate, projectCode }, token)  // GET /ttt/entries
@@ -577,7 +684,7 @@ classifyMeeting(title, organizer, token)                // POST /ttt/classify
 
 ---
 
-## 15. OpenShift deployment
+## 17. OpenShift deployment
 
 Files: [`openshift/`](openshift/)
 
@@ -622,7 +729,7 @@ Without this, login redirects will fail.
 
 ---
 
-## 16. File reference
+## 18. File reference
 
 ### Configuration
 
@@ -656,14 +763,14 @@ Without this, login redirects will fail.
 
 | File | Description |
 |---|---|
-| `backend/api.py` | FastAPI app — KB routes: `POST /upload`, `POST /search`, `GET /sources`, `DELETE /sources`, `POST /chat`, `POST /ingest-meeting`, `POST /summarize-meeting` |
+| `backend/api.py` | FastAPI app — KB routes: `/upload`, `/search`, `/sources`, `/chat`, `/ingest-meeting`, `/summarize-meeting`, `/agentic-meeting`, `/feedback`, `/feedback/stats` |
 | `backend/ttt_api.py` | TTT router mounted at `/ttt` — full CRUD, import, export, summary, classify |
 
 ### Frontend
 
 | File | Description |
 |---|---|
-| `frontend/src/App.jsx` | Root component — login gate, 4 KB tabs + 5 TTT tabs |
+| `frontend/src/App.jsx` | Root component — login gate, 6 KB tabs (Chat, Search, Upload, Meeting, Sources, Feedback) + 5 TTT tabs |
 | `frontend/src/api.js` | KB fetch wrappers |
 | `frontend/src/tttApi.js` | TTT fetch wrappers |
 | `frontend/src/supabaseClient.js` | Supabase JS client initialised from `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` |

@@ -62,6 +62,8 @@ WorkTrace is a document and meeting intelligence platform. Upload any file, ask 
 | **Multi-format ingestion** | PDF, DOCX, TXT, MD, CSV, JSON, YAML, HTML, images (OCR), source code |
 | **Semantic search** | pgvector cosine similarity — find content by meaning, not keywords |
 | **RAG chat** | Multi-turn conversational Q&A grounded in your indexed documents |
+| **Agentic meeting summariser** | 5-step agent loop (search KB → look up TTT history → classify → synthesise → push); full tool-call trace displayed in the UI |
+| **Chat feedback loop** | Thumbs up/down on every assistant message; approval score + low-rated query log in the Feedback tab |
 | **Meeting intelligence** | Ingest transcripts, auto-extract metadata, generate structured summaries |
 | **Time Task Tracker (TTT)** | Meeting summaries auto-pushed to `time_entries`; dashboard, manual entry, reports, CSV export, calendar import |
 | **Multi-user isolation** | Every document and time entry is scoped to the authenticated Supabase user |
@@ -101,12 +103,28 @@ When a question references time entries ("hours logged", "what did I work on", "
 
 ### 4. Meeting summarization
 
-The Meeting Upload tab accepts meeting transcripts. Supported formats include TXT, MD, VTT, SRT, PDF, and DOCX. The workflow is split into two steps to stay within hosting timeout limits:
+The Meeting Upload tab accepts meeting transcripts. Supported formats include TXT, MD, VTT, SRT, PDF, and DOCX. Two summarisation modes are available:
+
+#### Standard RAG mode
 
 1. **Ingest** — the transcript is indexed like any other document (fast, seconds)
-2. **Summarize** — an LLM call generates a structured summary covering topics, decisions, action items, attendees, and duration
+2. **Summarize** — a single RAG call generates a summary covering topics, decisions, and action items
 
-After summarization, the result is automatically pushed to the Time Task Tracker as a logged time entry.
+#### Agentic mode
+
+Runs a 5-step agent pipeline that produces a richer summary by combining document retrieval with historical project context:
+
+| Step | Tool | What it does |
+|---|---|---|
+| 1 | `search_kb` | Retrieves the most relevant transcript chunks from pgvector |
+| 2 | `lookup_ttt` | Fetches past TTT entries for the same project for historical context |
+| 3 | `classify` | Infers project code, task type, and billable flag from the filename and organizer |
+| 4 | `synthesise` | Calls the LLM with all gathered context (chunks + history) |
+| 5 | `push_ttt` | Inserts the completed time entry into the Time Task Tracker |
+
+After completion, the full agent trace (each tool's inputs and outputs) is shown in the UI so the reasoning process is transparent.
+
+After summarization in either mode, the result is automatically pushed to the Time Task Tracker as a logged time entry.
 
 **Structured transcript header** — transcripts that include a header block are auto-parsed for metadata:
 
@@ -137,6 +155,7 @@ The TTT module is a full time-tracking system built into the platform. It stores
 | **Reports** | Date-range summary reports broken down by project and task type |
 | **CSV export** | Download all entries for a date range as a CSV file |
 | **AI classification** | `/ttt/classify` endpoint infers project code and billable flag from a meeting title |
+| **Chat feedback** | Rate any chat response 👍/👎; the Feedback tab shows approval score, trend, and a drill-down of low-rated queries |
 
 ### 6. Authentication and multi-user isolation
 
@@ -222,7 +241,7 @@ The embedding provider is configured separately via `EMBED_PROVIDER` (`nomic` or
 
 | Layer | Role |
 |---|---|
-| **Frontend** | User interaction, login/logout, KB tabs, TTT tabs — [`frontend/src/App.jsx`](frontend/src/App.jsx) |
+| **Frontend** | User interaction, login/logout, KB tabs (Chat, Search, Upload, Meeting, Sources, Feedback), TTT tabs — [`frontend/src/App.jsx`](frontend/src/App.jsx) |
 | **Backend API** | Request handling, JWT auth, orchestration — [`backend/api.py`](backend/api.py) + [`backend/ttt_api.py`](backend/ttt_api.py) |
 | **Knowledge engine** | Extraction, embedding, retrieval, chat — [`backend/kb/`](backend/kb/) |
 | **Auth layer** | Supabase JWT validation (ES256 + HS256) — [`backend/kb/auth.py`](backend/kb/auth.py) |

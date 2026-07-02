@@ -10,6 +10,8 @@ A document and meeting intelligence platform. Upload any file, ask questions in 
 | **Semantic search** | pgvector cosine similarity — find content by meaning, not keywords |
 | **RAG chat** | Multi-turn conversational Q&A grounded in your documents |
 | **Meeting intelligence** | Ingest transcripts, auto-extract metadata, generate summaries |
+| **Agentic meeting summariser** | 5-step agent loop: search KB → look up TTT history → classify → synthesise → push; full reasoning trace visible in the UI |
+| **Chat feedback loop** | Thumbs up/down on every response; approval score dashboard; low-rated query log for iterative improvement |
 | **Time Task Tracker** | Meeting summaries auto-pushed to `time_entries` — dashboard, reports, CSV export |
 | **Multi-user isolation** | Every document and entry scoped to the authenticated Supabase user |
 | **Pluggable LLM** | watsonx · OpenAI · Groq · Ollama — switch via one env var |
@@ -41,11 +43,12 @@ WorkTrace/
 ├── frontend/                 React + Vite SPA
 │   └── src/
 │       ├── components/
-│       │   ├── Chat.jsx          Multi-turn RAG chat with source citations
+│       │   ├── Chat.jsx          Multi-turn RAG chat with source citations + feedback buttons
 │       │   ├── Search.jsx        Semantic search with filters + snippet cards
 │       │   ├── Upload.jsx        Multi-file dropzone with per-file status
 │       │   ├── Sources.jsx       Indexed file inventory with delete
-│       │   ├── MeetingUpload.jsx Meeting transcript ingestion + summarization
+│       │   ├── MeetingUpload.jsx Meeting ingestion — Standard RAG or Agentic mode with trace panel
+│       │   ├── FeedbackStats.jsx Chat feedback dashboard (approval score, low-rated query log)
 │       │   ├── TTTDashboard.jsx  Time tracking dashboard + charts
 │       │   ├── TTTEntries.jsx    Time entry list with filters
 │       │   ├── TTTManualEntry.jsx Manual time entry form
@@ -152,6 +155,18 @@ File upload → extract text → chunk (800 chars / 100 overlap)
 ```
 Question → embed → cosine search (pgvector) → top-K chunks
         → [optional TTT context] → build prompt → LLM → answer + sources
+        → [optional thumbs up/down feedback stored in chat_feedback table]
+```
+
+### Agentic meeting pipeline
+```
+Transcript (already ingested) →
+  1. search_kb      (retrieve transcript chunks)
+  2. lookup_ttt     (past entries for the same project)
+  3. classify       (infer project, task type, billable)
+  4. synthesise     (LLM call with all context)
+  5. push_ttt       (insert time entry)
+→ answer + full reasoning trace
 ```
 
 ---
