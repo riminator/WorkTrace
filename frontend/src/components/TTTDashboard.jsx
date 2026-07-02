@@ -473,10 +473,20 @@ export default function TTTDashboard({ token }) {
     { label: "Top project",         value: summary.topProject,      sub: "most hours this month" },
   ];
 
-  // entries panel data
+  // entries panel data — sort by date desc, then startTime desc within same date
+  const sortedEntries = [...allEntries].sort((a, b) => {
+    const dateA = a.date?.split("T")[0] ?? "";
+    const dateB = b.date?.split("T")[0] ?? "";
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
+    // same date — sort by startTime; entries without a time go last
+    if (a.startTime && b.startTime) return b.startTime.localeCompare(a.startTime);
+    if (a.startTime) return -1;
+    if (b.startTime) return 1;
+    return 0;
+  });
   const entriesToShow = entriesView === "recent"
-    ? allEntries.slice(0, 8)
-    : allEntries;
+    ? sortedEntries.slice(0, 8)
+    : sortedEntries;
 
   // hours by project data
   const byProjectData    = projectScope === "month" ? summary.monthByProj : summary.allByProj;
