@@ -206,6 +206,25 @@ export default function TTTManualEntry({ token }) {
     return [...seen].sort().map(p => ({ label: p, entry: null }));
   }, [pastEntries, projects])();
 
+  // Unique organizer emails, most-recent first
+  const organizerSuggestions = useCallback(() => {
+    const seen = new Set();
+    return pastEntries
+      .filter(e => e.organizer)
+      .filter(e => { if (seen.has(e.organizer)) return false; seen.add(e.organizer); return true; })
+      .map(e => ({ label: e.organizer, entry: null }));
+  }, [pastEntries])();
+
+  // Unique individual attendee names/emails extracted from all past comma-separated strings
+  const attendeeSuggestions = useCallback(() => {
+    const seen = new Set();
+    pastEntries.forEach(e => {
+      if (!e.attendees) return;
+      e.attendees.split(",").map(a => a.trim()).filter(Boolean).forEach(a => seen.add(a));
+    });
+    return [...seen].sort().map(a => ({ label: a, entry: null }));
+  }, [pastEntries])();
+
   // When a past title is picked, fill all the related fields
   function handleTitleSelect(item) {
     const e = item.entry;
@@ -329,12 +348,34 @@ export default function TTTManualEntry({ token }) {
         {/* Row 5 — organizer + attendees */}
         <div style={{ ...row, gridTemplateColumns: "1fr 1fr" }}>
           <Field label="Organizer">
-            <input type="email" className="input" value={form.organizer}
-              onChange={e => set("organizer", e.target.value)} placeholder="organizer@company.com" />
+            <Typeahead
+              value={form.organizer}
+              onChange={v => set("organizer", v)}
+              onSelect={item => set("organizer", item.label)}
+              suggestions={organizerSuggestions}
+              placeholder="organizer@company.com"
+              renderRow={item => (
+                <div style={{ fontSize: 13, color: "var(--text)" }}>{item.label}</div>
+              )}
+            />
           </Field>
           <Field label="Attendees">
-            <input type="text" className="input" value={form.attendees}
-              onChange={e => set("attendees", e.target.value)} placeholder="Comma-separated" />
+            <Typeahead
+              value={form.attendees}
+              onChange={v => set("attendees", v)}
+              onSelect={item => {
+                // Append to existing comma-separated list, skip if already present
+                const current = form.attendees.split(",").map(a => a.trim()).filter(Boolean);
+                if (!current.includes(item.label)) {
+                  set("attendees", [...current, item.label].join(", "));
+                }
+              }}
+              suggestions={attendeeSuggestions}
+              placeholder="Comma-separated"
+              renderRow={item => (
+                <div style={{ fontSize: 13, color: "var(--text)" }}>{item.label}</div>
+              )}
+            />
           </Field>
         </div>
 
