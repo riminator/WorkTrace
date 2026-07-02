@@ -275,6 +275,8 @@ body {
 /* ── Inputs ──────────────────────────────────────────────────── */
 .input {
   flex: 1;
+  width: 100%;
+  min-width: 0;
   padding: 9px 13px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
@@ -307,6 +309,8 @@ body {
 .small-input:focus { border-color: var(--border-focus); }
 
 .select {
+  width: 100%;
+  min-width: 0;
   padding: 7px 10px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
@@ -316,7 +320,6 @@ body {
   color: var(--text);
   outline: none;
   transition: border-color 0.15s;
-  min-width: 120px;
 }
 .select:focus { border-color: var(--border-focus); }
 
