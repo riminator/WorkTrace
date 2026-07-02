@@ -32,6 +32,16 @@ export default function TTTEntries({ token }) {
         { startDate: f.startDate || undefined, endDate: f.endDate || undefined, projectCode: f.projectCode || undefined },
         token,
       );
+      // Sort by date desc, then startTime desc within the same day
+      data.sort((a, b) => {
+        const dateA = a.date?.split("T")[0] ?? "";
+        const dateB = b.date?.split("T")[0] ?? "";
+        if (dateB !== dateA) return dateB.localeCompare(dateA);
+        if (a.startTime && b.startTime) return b.startTime.localeCompare(a.startTime);
+        if (a.startTime) return -1;
+        if (b.startTime) return 1;
+        return 0;
+      });
       setEntries(data);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
