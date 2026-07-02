@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from kb.config import RAG_TOP_K
 from kb.llm import get_provider
-from kb.search import SearchResult, get_most_recent_meeting_date, search
+from kb.search import SearchResult, search
 from kb.ttt import is_ttt_query, query_ttt
 
 SYSTEM_PROMPT = """\
@@ -91,45 +91,27 @@ def ask(
     Returns:
         ChatResponse with the LLM answer and retrieved source metadata.
     """
-    # 1. Retrieve relevant chunks
-    results: list[SearchResult] = search(
-        question, top_k=top_k, file_type=file_type, source_filter=source_filter, user_id=user_id
-    )
+    # 1. Temporal-meeting intent: use ONLY the TTT as the source of truth.
+    #    The vector KB can't reliably identify "most recent" — it returns
+    #    semantically similar chunks (e.g. a WorkTrace demo PDF) which the LLM
+    #    then misidentifies as the last meeting.  Skip the vector search entirely
+    #    for these queries and let the TTT context carry the full answer.
+    is_temporal = _is_temporal_meeting_query(question)
 
-    # 1b. Temporal intent — if the user asks about "last/latest/recent meeting",
-    #     find the most-recent meeting date and bubble those chunks to the front.
-    if _is_temporal_meeting_query(question):
-        most_recent_date = get_most_recent_meeting_date(user_id=user_id)
-        if most_recent_date:
-            # Partition: chunks from the most-recent meeting first, rest after
-            primary = [r for r in results if r.doc_metadata.get("meeting_date") == most_recent_date]
-            secondary = [r for r in results if r.doc_metadata.get("meeting_date") != most_recent_date]
-            results = primary + secondary
-            # If we got no semantic hits for the most-recent meeting, fetch more
-            if not primary:
-                extra = search(
-                        question,
-                        top_k=top_k * 2,
-                        file_type=file_type,
-                        source_filter=source_filter,
-                        user_id=user_id,
-                    )
-                primary = [r for r in extra if r.doc_metadata.get("meeting_date") == most_recent_date]
-                secondary = [r for r in extra if r.doc_metadata.get("meeting_date") != most_recent_date]
-                results = (primary + secondary)[:top_k]
-
-    # 1c. TTT query — fetch structured time-entry data when relevant.
-    # Temporal meeting queries (last meeting, last N meetings) always pull the
-    # TTT meeting list so the LLM has full history, not just what's in the
-    # vector KB.
-    # skip_ttt=True is used during meeting summarization to avoid injecting
-    # unrelated historical entries into the summary context.
     ttt_context = ""
     if not skip_ttt:
-        if _is_temporal_meeting_query(question):
+        if is_temporal:
             ttt_context = query_ttt(question, force_meetings=True, user_id=user_id)
         elif is_ttt_query(question):
             ttt_context = query_ttt(question, user_id=user_id)
+
+    # For temporal meeting queries skip the vector search — TTT is authoritative.
+    if is_temporal:
+        results: list[SearchResult] = []
+    else:
+        results = search(
+            question, top_k=top_k, file_type=file_type, source_filter=source_filter, user_id=user_id
+        )
 
     # 2. Build context block — TTT results first (structured), then vector chunks
     context_parts = []
