@@ -22,6 +22,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+import psycopg2
+import psycopg2.extras
+
 log = logging.getLogger(__name__)
 
 # ── intent patterns ────────────────────────────────────────────────────────────
@@ -131,7 +134,6 @@ def _extract_project(question: str) -> str | None:
 # ── query builder + runner ─────────────────────────────────────────────────────
 
 def _get_conn():
-    import psycopg2
     url = os.environ.get("TTT_DATABASE_URL", "")
     if not url:
         raise RuntimeError("TTT_DATABASE_URL is not set.")
@@ -176,8 +178,6 @@ def query_ttt(
 
     Returns an empty string if TTT_DATABASE_URL is not configured.
     """
-    import psycopg2.extras
-
     ttt_url = os.environ.get("TTT_DATABASE_URL", "")
     if not ttt_url:
         return ""

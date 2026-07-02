@@ -8,7 +8,7 @@ from __future__ import annotations
 import pathlib
 import re
 import textwrap
-from datetime import date
+from datetime import date, datetime
 
 # ── optional imports ─────────────────────────────────────────────────────────
 try:
@@ -67,7 +67,7 @@ def extract_meeting_metadata(text: str) -> dict:
         for fmt in ("%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%d/%m/%Y"):
             try:
                 meta["meeting_date"] = date.fromisoformat(
-                    __import__("datetime").datetime.strptime(raw_date, fmt).strftime("%Y-%m-%d")
+                    datetime.strptime(raw_date, fmt).strftime("%Y-%m-%d")
                 ).isoformat()
                 break
             except ValueError:

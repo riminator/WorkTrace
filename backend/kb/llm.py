@@ -18,6 +18,7 @@ To add a new provider:
 from __future__ import annotations
 
 import abc
+import json
 from typing import Generator
 
 import httpx
@@ -58,7 +59,6 @@ class OllamaProvider(BaseLLMProvider):
         self._url = f"{host.rstrip('/')}/api/chat"
 
     def chat(self, messages: list[dict], *, stream: bool = False) -> str | Generator[str, None, None]:
-        import json
         resp = httpx.post(
             self._url,
             json={"model": self.model, "messages": messages, "stream": stream},
@@ -102,7 +102,7 @@ class OpenAIProvider(BaseLLMProvider):
             "Content-Type": "application/json",
         }
 
-    def chat(self, messages: list[dict], *, stream: bool = False) -> str:
+    def chat(self, messages: list[dict]) -> str:
         resp = httpx.post(
             f"{self._base}/chat/completions",
             json={"model": self._model, "messages": messages, "stream": False},

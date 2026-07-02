@@ -119,7 +119,7 @@ export default function MeetingUpload({ token }) {
                 placeholder="e.g. Honda, ACME"
                 value={projectCode}
                 onChange={(e) => setProjectCode(e.target.value)}
-                disabled={status === "loading"}
+                disabled={status === "ingesting" || status === "summarizing"}
               />
             </div>
             <div>
@@ -131,7 +131,7 @@ export default function MeetingUpload({ token }) {
                 placeholder="e.g. name@company.com"
                 value={organizer}
                 onChange={(e) => setOrganizer(e.target.value)}
-                disabled={status === "loading"}
+                disabled={status === "ingesting" || status === "summarizing"}
               />
             </div>
           </div>
@@ -144,7 +144,7 @@ export default function MeetingUpload({ token }) {
               placeholder="e.g. Alice, Bob, Carol"
               value={attendees}
               onChange={(e) => setAttendees(e.target.value)}
-              disabled={status === "loading"}
+              disabled={status === "ingesting" || status === "summarizing"}
             />
           </div>
         </div>

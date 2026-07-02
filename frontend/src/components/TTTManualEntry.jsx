@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createEntry, classifyMeeting, getProjects, getEntries } from "../tttApi";
 
 const TASK_TYPES = ["meeting","development","planning","review","admin","learning","other"];
@@ -191,39 +191,39 @@ export default function TTTManualEntry({ token }) {
   // ── Suggestion lists ─────────────────────────────────────────────────────
 
   // Unique past titles, deduplicated, most-recent first
-  const titleSuggestions = useCallback(() => {
+  const titleSuggestions = useMemo(() => {
     const seen = new Set();
     return pastEntries
       .filter(e => e.meetingTitle)
       .filter(e => { if (seen.has(e.meetingTitle)) return false; seen.add(e.meetingTitle); return true; })
       .map(e => ({ label: e.meetingTitle, entry: e }));
-  }, [pastEntries])();
+  }, [pastEntries]);
 
   // Unique project codes from entries + projects API list
-  const projectSuggestions = useCallback(() => {
+  const projectSuggestions = useMemo(() => {
     const seen = new Set(projects);
     pastEntries.forEach(e => e.projectCode && seen.add(e.projectCode));
     return [...seen].sort().map(p => ({ label: p, entry: null }));
-  }, [pastEntries, projects])();
+  }, [pastEntries, projects]);
 
   // Unique organizer emails, most-recent first
-  const organizerSuggestions = useCallback(() => {
+  const organizerSuggestions = useMemo(() => {
     const seen = new Set();
     return pastEntries
       .filter(e => e.organizer)
       .filter(e => { if (seen.has(e.organizer)) return false; seen.add(e.organizer); return true; })
       .map(e => ({ label: e.organizer, entry: null }));
-  }, [pastEntries])();
+  }, [pastEntries]);
 
   // Unique individual attendee names/emails extracted from all past comma-separated strings
-  const attendeeSuggestions = useCallback(() => {
+  const attendeeSuggestions = useMemo(() => {
     const seen = new Set();
     pastEntries.forEach(e => {
       if (!e.attendees) return;
       e.attendees.split(",").map(a => a.trim()).filter(Boolean).forEach(a => seen.add(a));
     });
     return [...seen].sort().map(a => ({ label: a, entry: null }));
-  }, [pastEntries])();
+  }, [pastEntries]);
 
   // When a past title is picked, fill all the related fields
   function handleTitleSelect(item) {

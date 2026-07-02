@@ -121,7 +121,6 @@ class BulkDeleteRequest(BaseModel):
 class ClassifyRequest(BaseModel):
     title: str
     organizer: str | None = None
-    attendees: list[str] = []
 
 
 # ── Classification (ported from classification.js) ────────────────────────────

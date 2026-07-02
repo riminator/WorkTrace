@@ -130,14 +130,6 @@ export async function importICS(file, token) {
   return res.json();
 }
 
-export function exportCSVUrl(token, startDate, endDate) {
-  // Returns URL — caller fetches directly for download
-  const params = new URLSearchParams();
-  if (startDate) params.append("start_date", startDate);
-  if (endDate)   params.append("end_date",   endDate);
-  return `${BASE}/ttt/export/csv?${params}`;
-}
-
 export async function exportCSV(token, startDate, endDate) {
   const params = new URLSearchParams();
   if (startDate) params.append("start_date", startDate);

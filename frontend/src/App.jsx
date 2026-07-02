@@ -16,7 +16,6 @@ import "./App.css";
 
 const KB_TABS  = ["Chat", "Search", "Upload", "Meeting", "Sources"];
 const TTT_TABS = ["Dashboard", "Time Entries", "Manual Entry", "Import", "Reports"];
-const ALL_TABS = [...TTT_TABS, ...KB_TABS];
 
 export default function App() {
   const [tab, setTab]           = useState("Dashboard");  // default to Dashboard
