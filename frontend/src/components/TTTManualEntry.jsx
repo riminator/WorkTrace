@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { createEntry, classifyMeeting, getProjects } from "../tttApi";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createEntry, classifyMeeting, getProjects, getEntries } from "../tttApi";
 
 const TASK_TYPES = ["meeting","development","planning","review","admin","learning","other"];
 
@@ -14,8 +14,111 @@ function Field({ label, required, children }) {
   );
 }
 
+/* ── Reusable typeahead dropdown ──────────────────────────────────────────── */
+function Typeahead({ value, onChange, onSelect, suggestions, renderRow, placeholder, required, inputStyle, inputProps = {} }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    function handleDown(e) {
+      if (e.key === "Escape") { setOpen(false); return; }
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleDown);
+    document.addEventListener("keydown", handleDown);
+    return () => {
+      document.removeEventListener("mousedown", handleDown);
+      document.removeEventListener("keydown", handleDown);
+    };
+  }, []);
+
+  const filtered = suggestions.filter(s =>
+    !filter || s.label.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  function handleFocus() {
+    setFilter("");
+    setOpen(true);
+  }
+
+  function handleChange(e) {
+    setFilter(e.target.value);
+    onChange(e.target.value);
+    setOpen(true);
+  }
+
+  function handlePick(item) {
+    onSelect(item);
+    setOpen(false);
+    setFilter("");
+    inputRef.current?.blur();
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input
+        ref={inputRef}
+        type="text"
+        className="input"
+        value={open ? filter : value}
+        onFocus={handleFocus}
+        onChange={handleChange}
+        onBlur={e => {
+          // If blur was caused by clicking inside the dropdown, don't close — mousedown handles it
+          if (!wrapRef.current?.contains(e.relatedTarget)) {
+            // small delay so click on item fires first
+            setTimeout(() => setOpen(false), 120);
+          }
+        }}
+        placeholder={placeholder}
+        required={required}
+        style={inputStyle}
+        autoComplete="off"
+        {...inputProps}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: "absolute",
+          top: "calc(100% + 4px)",
+          left: 0,
+          right: 0,
+          background: "var(--bg)",
+          border: "1.5px solid var(--border-focus)",
+          borderRadius: "var(--radius)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+          zIndex: 300,
+          maxHeight: 240,
+          overflowY: "auto",
+        }}>
+          {filtered.map((item, i) => (
+            <div
+              key={i}
+              onMouseDown={e => { e.preventDefault(); handlePick(item); }}
+              style={{
+                padding: "9px 12px",
+                cursor: "pointer",
+                borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none",
+                transition: "background 0.1s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--surface)"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            >
+              {renderRow(item)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main component ───────────────────────────────────────────────────────── */
 export default function TTTManualEntry({ token }) {
-  const [projects, setProjects] = useState([]);
+  const [projects,    setProjects]    = useState([]);
+  const [pastEntries, setPastEntries] = useState([]);  // raw entries for suggestions
   const [form, setForm] = useState({
     date:        new Date().toISOString().split("T")[0],
     startTime:   "",
@@ -35,6 +138,8 @@ export default function TTTManualEntry({ token }) {
 
   useEffect(() => {
     getProjects(token).then(setProjects).catch(() => {});
+    // Load recent entries for autocomplete (last 200, no date filter)
+    getEntries({}, token).then(setPastEntries).catch(() => {});
   }, [token]);
 
   function set(key, val) {
@@ -83,6 +188,45 @@ export default function TTTManualEntry({ token }) {
     finally { setSaving(false); }
   }
 
+  // ── Suggestion lists ─────────────────────────────────────────────────────
+
+  // Unique past titles, deduplicated, most-recent first
+  const titleSuggestions = useCallback(() => {
+    const seen = new Set();
+    return pastEntries
+      .filter(e => e.meetingTitle)
+      .filter(e => { if (seen.has(e.meetingTitle)) return false; seen.add(e.meetingTitle); return true; })
+      .map(e => ({ label: e.meetingTitle, entry: e }));
+  }, [pastEntries])();
+
+  // Unique project codes from entries + projects API list
+  const projectSuggestions = useCallback(() => {
+    const seen = new Set(projects);
+    pastEntries.forEach(e => e.projectCode && seen.add(e.projectCode));
+    return [...seen].sort().map(p => ({ label: p, entry: null }));
+  }, [pastEntries, projects])();
+
+  // When a past title is picked, fill all the related fields
+  function handleTitleSelect(item) {
+    const e = item.entry;
+    setForm(f => ({
+      ...f,
+      title:       e.meetingTitle || "",
+      project:     e.projectCode  || f.project,
+      taskType:    e.taskType     || f.taskType,
+      billable:    e.billable     ?? f.billable,
+      description: e.description  || f.description,
+      organizer:   e.organizer    || f.organizer,
+      attendees:   e.attendees    || f.attendees,
+      // fill duration from the past entry's minutes
+      duration:    e.durationMinutes ? (e.durationMinutes / 60).toFixed(2) : f.duration,
+    }));
+  }
+
+  function handleProjectSelect(item) {
+    set("project", item.label);
+  }
+
   const row = { display: "grid", gap: 12 };
 
   return (
@@ -113,10 +257,33 @@ export default function TTTManualEntry({ token }) {
         {/* Row 2 — title + classify */}
         <Field label="Meeting / Task title" required>
           <div style={{ display: "flex", gap: 8 }}>
-            <input type="text" className="input" value={form.title}
-              onChange={e => set("title", e.target.value)}
-              placeholder="e.g., Sprint Planning Meeting" required
-              style={{ flex: 1 }} />
+            <Typeahead
+              value={form.title}
+              onChange={v => set("title", v)}
+              onSelect={handleTitleSelect}
+              suggestions={titleSuggestions}
+              placeholder="e.g., Sprint Planning Meeting"
+              required
+              inputStyle={{ flex: 1 }}
+              renderRow={item => (
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1, display: "flex", gap: 8 }}>
+                    <span>{item.entry.projectCode}</span>
+                    <span>·</span>
+                    <span>{item.entry.taskType}</span>
+                    {item.entry.durationMinutes && (
+                      <>
+                        <span>·</span>
+                        <span>{(item.entry.durationMinutes / 60).toFixed(1)}h</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            />
             <button type="button" className="btn btn-outline" style={{ whiteSpace: "nowrap", flexShrink: 0 }}
               onClick={handleClassify}>
               Auto-classify
@@ -127,11 +294,17 @@ export default function TTTManualEntry({ token }) {
         {/* Row 3 — project + task type + billable */}
         <div style={{ ...row, gridTemplateColumns: "1fr 1fr 1fr" }}>
           <Field label="Project" required>
-            <input type="text" className="input" list="ttt-projects" value={form.project}
-              onChange={e => set("project", e.target.value)} placeholder="e.g., Honda" required />
-            <datalist id="ttt-projects">
-              {projects.map(p => <option key={p} value={p} />)}
-            </datalist>
+            <Typeahead
+              value={form.project}
+              onChange={v => set("project", v)}
+              onSelect={handleProjectSelect}
+              suggestions={projectSuggestions}
+              placeholder="e.g., Honda"
+              required
+              renderRow={item => (
+                <div style={{ fontSize: 13, color: "var(--text)" }}>{item.label}</div>
+              )}
+            />
           </Field>
           <Field label="Task type">
             <select className="select" value={form.taskType} onChange={e => set("taskType", e.target.value)}>

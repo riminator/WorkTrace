@@ -12,7 +12,8 @@ gives Bob permanent context about the app's architecture and deploy workflow.
 |---|---|---|
 | **MCP server source** | `~/.bob/mcp-servers/worktrace-mcp/` | Node.js/TypeScript stdio server — exposes WorkTrace REST API as Bob tools |
 | **MCP registration** | `~/.bob/settings/mcp.json` — `"worktrace"` entry | Tells Bob how to spawn the server |
-| **Bob skill** | `~/.bob/skills/worktrace/SKILL.md` | Permanent context: stack, URLs, env vars, deploy workflow, gotchas |
+| **worktrace skill** | `~/.bob/skills/worktrace/SKILL.md` | Permanent context: stack, URLs, env vars, deploy workflow, gotchas |
+| **worktrace-deploy skill** | `.bob/skills/worktrace-deploy/SKILL.md` | Guided deploy wizard for fresh/renewal clusters + full debug decision tree |
 
 ---
 
@@ -70,15 +71,15 @@ npm run build
 
 ---
 
-## Bob Skill
+## Bob Skills
 
-### What it is
+### `worktrace` — app context skill
 
 A skill is a markdown file that Bob loads into context whenever a relevant conversation
 starts. The `worktrace` skill means Bob already knows the full stack, all env vars,
 the exact build commands, and common gotchas — **before reading a single file in this repo**.
 
-### What it covers
+**What it covers:**
 
 - Full service topology (nginx → FastAPI → pgvector → Supabase auth)
 - All key URLs, image names, OC project and cluster identifiers
@@ -89,16 +90,51 @@ the exact build commands, and common gotchas — **before reading a single file 
 - MCP server tool reference and token regeneration instructions
 - Useful `oc` one-liners for debugging
 
-### Location
+**Location:** `~/.bob/skills/worktrace/SKILL.md`
 
-```
-~/.bob/skills/worktrace/SKILL.md
-```
+**Activates when you say:** "WorkTrace", "my app", "the time tracker", "rebuild", "redeploy",
+"my knowledge base", or ask about the OpenShift cluster.
 
-### When it activates
+---
 
-Bob activates it when you say anything matching: "WorkTrace", "my app", "the time tracker",
-"rebuild", "redeploy", "my knowledge base", or ask about the OpenShift cluster.
+### `worktrace-deploy` — deploy wizard & debug skill
+
+An interactive guided skill for deploying WorkTrace to a new or replacement OCP cluster,
+and for diagnosing broken deployments. It prompts for every required credential, runs
+`./openshift/deploy.sh`, and walks through each failure mode with exact fix commands.
+
+**Location:** `.bob/skills/worktrace-deploy/SKILL.md` *(workspace-scoped)*
+
+**Activates when you say:** "deploy to new cluster", "new OCP cluster", "cluster expired",
+"redeploy", "pods crashing", "backend error", or ask to set up WorkTrace on a fresh cluster.
+
+**Four modes:**
+
+| Mode | When to use |
+|---|---|
+| **A — Full fresh deploy** | Brand-new cluster, no `deploy.env` yet |
+| **B — Cluster renewal** | Same credentials, just new `OC_SERVER` + `OC_TOKEN` |
+| **C — Debug** | Pods crashing, blank page, secrets wrong, Postgres issues |
+| **D — Dump before expiry** | Save DB before your TechZone reservation ends |
+
+**Mode A walkthrough (fresh deploy):**
+1. Checks `oc`, `docker`, `buildx` are installed and daemon is running
+2. Creates `deploy.env` from example if missing
+3. Prompts for credentials group by group — OCP login, registry, Supabase, Postgres password, Nomic, LLM provider (Groq or watsonx)
+4. Runs `./openshift/deploy.sh`
+5. Reminds you to update Supabase redirect URLs (login fails without this)
+6. Verifies all pods are healthy
+
+**Mode C debug decision tree:**
+
+| Symptom | Diagnostic command | Common cause |
+|---|---|---|
+| Backend CrashLoopBackOff | `oc logs deployment/knowledgebase-backend --previous` | Wrong DATABASE_URL, missing secret, wrong arch build |
+| Frontend crash | `oc exec deployment/knowledgebase-frontend -- nginx -t` | nginx config error |
+| App loads, blank page | Check VITE vars in image | `VITE_*` baked at build time — needs full image rebuild |
+| Login fails | Check Supabase redirect URLs | New cluster URL not added to Supabase auth config |
+| Postgres won't start | `oc get pvc postgres-data` | PVC Pending — wrong storage class for this cluster |
+| Rotate one secret | `oc patch secret knowledgebase-secrets ...` | No full redeploy needed |
 
 ---
 
@@ -129,5 +165,9 @@ TechZone clusters expire roughly every 2 weeks. When you migrate:
 2. Deploy to new cluster: update `OC_SERVER` + `OC_TOKEN` in `openshift/deploy.env`, run `./openshift/deploy.sh`
 3. Get the new route: `oc get route -n knowledgebase`
 4. Update `WORKTRACE_URL` in `~/.bob/settings/mcp.json`
+5. Update Supabase redirect URLs to the new route host (Authentication → URL Configuration)
 
-That's the only change needed — the token stays valid.
+That's all that changes — the JWT token and all other secrets stay valid.
+
+> **Tip:** Say *"cluster expired"* or *"deploy to new cluster"* and the `worktrace-deploy` skill
+> will guide you through steps 2–5 interactively, prompting for each value.
