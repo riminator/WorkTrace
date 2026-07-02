@@ -208,19 +208,19 @@ function EntryDrawer({ entry, token, onClose, onSaved }) {
         {editing && (
           <form onSubmit={handleEditSave} style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label className="filter-label">Date</label>
                 <input name="date" type="date" className="input" defaultValue={entry.date?.split("T")[0]} required />
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label className="filter-label">Duration (hrs)</label>
                 <input name="duration" type="number" step="0.25" min="0.25" className="input" defaultValue={(entry.durationMinutes / 60).toFixed(2)} required />
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label className="filter-label">Start time</label>
                 <input name="startTime" type="time" className="input" defaultValue={entry.startTime ? new Date(entry.startTime).toISOString().slice(11,16) : ""} />
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label className="filter-label">End time</label>
                 <input name="endTime" type="time" className="input" defaultValue={entry.endTime ? new Date(entry.endTime).toISOString().slice(11,16) : ""} />
               </div>
@@ -230,11 +230,11 @@ function EntryDrawer({ entry, token, onClose, onSaved }) {
               <input name="title" type="text" className="input" defaultValue={entry.meetingTitle || ""} required />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label className="filter-label">Project</label>
                 <input name="project" type="text" className="input" defaultValue={entry.projectCode} required />
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label className="filter-label">Task type</label>
                 <select name="taskType" className="select" style={{ width: "100%" }} defaultValue={entry.taskType}>
                   {TASK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
