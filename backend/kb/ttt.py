@@ -206,14 +206,14 @@ def query_ttt(
         # which meetings exist and which came before/after others.
         sql = """
             SELECT project_code, task_type, entry_date,
-                   duration_minutes, meeting_title,
+                   start_time, duration_minutes, meeting_title,
                    LEFT(description, 1000) AS description
             FROM time_entries
             WHERE task_type = 'meeting'
               AND entry_date BETWEEN %(start)s AND %(end)s
             {project_filter}
             {user_filter}
-            ORDER BY entry_date DESC
+            ORDER BY entry_date DESC, start_time DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT %(limit)s
         """
     elif re.search(r"\b(total|sum|how many hours?|how much time|aggregate)\b", q_lower):
@@ -238,26 +238,26 @@ def query_ttt(
     elif re.search(r"\bbillable\b", q_lower):
         sql = """
             SELECT id, project_code, task_type, entry_date,
-                   duration_minutes, billable, status, description
+                   start_time, duration_minutes, billable, status, description
             FROM time_entries
             WHERE entry_date BETWEEN %(start)s AND %(end)s
               AND billable = TRUE
             {project_filter}
             {user_filter}
-            ORDER BY entry_date DESC
+            ORDER BY entry_date DESC, start_time DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT %(limit)s
         """
     else:
         # Default: recent entries with description
         sql = """
             SELECT id, project_code, task_type, entry_date,
-                   duration_minutes, billable, status,
+                   start_time, duration_minutes, billable, status,
                    meeting_title, description
             FROM time_entries
             WHERE entry_date BETWEEN %(start)s AND %(end)s
             {project_filter}
             {user_filter}
-            ORDER BY entry_date DESC
+            ORDER BY entry_date DESC, start_time DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT %(limit)s
         """
 
