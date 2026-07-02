@@ -10,11 +10,12 @@ import TTTEntries from "./components/TTTEntries";
 import TTTManualEntry from "./components/TTTManualEntry";
 import TTTImport from "./components/TTTImport";
 import TTTReports from "./components/TTTReports";
+import FeedbackStats from "./components/FeedbackStats";
 import { useSession, useAccessToken } from "./context/AuthContext";
 import { supabase } from "./supabaseClient";
 import "./App.css";
 
-const KB_TABS  = ["Chat", "Search", "Upload", "Meeting", "Sources"];
+const KB_TABS  = ["Chat", "Search", "Upload", "Meeting", "Sources", "Feedback"];
 const TTT_TABS = ["Dashboard", "Time Entries", "Manual Entry", "Import", "Reports"];
 
 export default function App() {
@@ -110,6 +111,7 @@ export default function App() {
         {tab === "Upload"       && <Upload        token={token} />}
         {tab === "Meeting"      && <MeetingUpload token={token} />}
         {tab === "Sources"      && <Sources       token={token} />}
+        {tab === "Feedback"     && <FeedbackStats token={token} />}
         {tab === "Dashboard"    && <TTTDashboard  token={token} />}
         {tab === "Time Entries" && <TTTEntries    token={token} />}
         {tab === "Manual Entry" && <TTTManualEntry token={token} />}

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { ingestMeeting, summarizeMeeting } from "../api";
+import { ingestMeeting, summarizeMeeting, agenticMeeting } from "../api";
 
 function formatBytes(b) {
   if (b < 1024) return `${b} B`;
@@ -8,13 +8,22 @@ function formatBytes(b) {
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const TOOL_META = {
+  search_kb:  { label: "Search knowledge base", icon: "🔍" },
+  lookup_ttt: { label: "Look up past TTT entries", icon: "📋" },
+  classify:   { label: "Classify meeting",  icon: "🏷️" },
+  synthesise: { label: "Synthesise summary", icon: "🧠" },
+  push_ttt:   { label: "Push to Time Tracker", icon: "✅" },
+};
+
 export default function MeetingUpload({ token }) {
   const [file, setFile]             = useState(null);
   const [projectCode, setProjectCode] = useState("");
   const [organizer, setOrganizer]   = useState("");
   const [attendees, setAttendees]   = useState("");
   const [force, setForce]           = useState(false);
-  const [status, setStatus]         = useState("idle"); // idle | ingesting | summarizing | done | error
+  const [mode, setMode]             = useState("standard"); // "standard" | "agent"
+  const [status, setStatus]         = useState("idle");     // idle | ingesting | summarizing | done | error
   const [result, setResult]         = useState(null);
   const [error, setError]           = useState(null);
 
@@ -38,7 +47,7 @@ export default function MeetingUpload({ token }) {
     setError(null);
     setResult(null);
 
-    // Step 1 — fast: just ingest the file into the knowledge base
+    // Step 1 — ingest (same for both modes)
     setStatus("ingesting");
     let ingestData;
     try {
@@ -49,15 +58,25 @@ export default function MeetingUpload({ token }) {
       return;
     }
 
-    // Step 2 — slow: RAG summarization + TTT push (separate request to avoid timeout)
+    // Step 2 — summarize or agentic
     setStatus("summarizing");
     try {
-      const data = await summarizeMeeting({
-        filename:     ingestData.filename,
-        project_code: projectCode || undefined,
-        organizer:    organizer   || undefined,
-        attendees:    attendees   || undefined,
-      }, token);
+      let data;
+      if (mode === "agent") {
+        data = await agenticMeeting({
+          filename:     ingestData.filename,
+          project_code: projectCode || undefined,
+          organizer:    organizer   || undefined,
+          attendees:    attendees   || undefined,
+        }, token);
+      } else {
+        data = await summarizeMeeting({
+          filename:     ingestData.filename,
+          project_code: projectCode || undefined,
+          organizer:    organizer   || undefined,
+          attendees:    attendees   || undefined,
+        }, token);
+      }
       setResult(data);
       setStatus("done");
     } catch (err) {
@@ -76,6 +95,8 @@ export default function MeetingUpload({ token }) {
     setResult(null);
     setError(null);
   }
+
+  const busy = status === "ingesting" || status === "summarizing";
 
   return (
     <div>
@@ -119,7 +140,7 @@ export default function MeetingUpload({ token }) {
                 placeholder="e.g. Honda, ACME"
                 value={projectCode}
                 onChange={(e) => setProjectCode(e.target.value)}
-                disabled={status === "ingesting" || status === "summarizing"}
+                disabled={busy}
               />
             </div>
             <div>
@@ -131,7 +152,7 @@ export default function MeetingUpload({ token }) {
                 placeholder="e.g. name@company.com"
                 value={organizer}
                 onChange={(e) => setOrganizer(e.target.value)}
-                disabled={status === "ingesting" || status === "summarizing"}
+                disabled={busy}
               />
             </div>
           </div>
@@ -144,23 +165,51 @@ export default function MeetingUpload({ token }) {
               placeholder="e.g. Alice, Bob, Carol"
               value={attendees}
               onChange={(e) => setAttendees(e.target.value)}
-              disabled={status === "ingesting" || status === "summarizing"}
+              disabled={busy}
             />
           </div>
         </div>
 
+        {/* Mode toggle */}
+        <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px" }}>Mode</span>
+          <button
+            type="button"
+            className={`btn ${mode === "standard" ? "btn-primary" : "btn-outline"}`}
+            style={{ fontSize: 12, padding: "5px 14px" }}
+            onClick={() => setMode("standard")}
+            disabled={busy}
+          >
+            Standard RAG
+          </button>
+          <button
+            type="button"
+            className={`btn ${mode === "agent" ? "btn-primary" : "btn-outline"}`}
+            style={{ fontSize: 12, padding: "5px 14px" }}
+            onClick={() => setMode("agent")}
+            disabled={busy}
+          >
+            🤖 Agentic
+          </button>
+          {mode === "agent" && (
+            <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4 }}>
+              Runs 5 tool calls: search → history → classify → synthesise → push
+            </span>
+          )}
+        </div>
+
         {/* Actions */}
-        <div className="upload-actions" style={{ marginTop: 16 }}>
+        <div className="upload-actions" style={{ marginTop: 14 }}>
           <button
             className="btn btn-primary"
             onClick={handleSubmit}
-            disabled={!file || status === "ingesting" || status === "summarizing"}
+            disabled={!file || busy}
           >
             {status === "ingesting"   ? "Uploading…"   :
-             status === "summarizing" ? "Summarizing…" :
+             status === "summarizing" ? (mode === "agent" ? "Agent running…" : "Summarizing…") :
              "Ingest & Push to TTT"}
           </button>
-          {status !== "idle" && status !== "ingesting" && status !== "summarizing" && (
+          {status !== "idle" && !busy && (
             <button className="btn btn-outline" onClick={handleReset}>
               Reset
             </button>
@@ -170,7 +219,7 @@ export default function MeetingUpload({ token }) {
               type="checkbox"
               checked={force}
               onChange={(e) => setForce(e.target.checked)}
-              disabled={status === "ingesting" || status === "summarizing"}
+              disabled={busy}
             />
             Re-index if already uploaded
           </label>
@@ -178,19 +227,25 @@ export default function MeetingUpload({ token }) {
       </div>
 
       {/* In-progress status */}
-      {(status === "ingesting" || status === "summarizing") && (
+      {busy && (
         <div className="card" style={{ borderLeft: "4px solid var(--accent)" }}>
           <div style={{ fontSize: 13, color: "var(--muted)" }}>
             <span style={{ marginRight: 8 }}>
               {status === "ingesting" ? "⬆️" : "🧠"}
             </span>
             <strong style={{ color: "var(--text)" }}>
-              {status === "ingesting" ? "Step 1 of 2 — Uploading & indexing…" : "Step 2 of 2 — Generating summary…"}
+              {status === "ingesting"
+                ? "Step 1 of 2 — Uploading & indexing…"
+                : mode === "agent"
+                  ? "Step 2 of 2 — Agent running tool calls…"
+                  : "Step 2 of 2 — Generating summary…"}
             </strong>
             <div style={{ marginTop: 4, fontSize: 12 }}>
               {status === "ingesting"
                 ? "Extracting text, creating embeddings, storing in knowledge base."
-                : "Running RAG over the indexed content and pushing to Time Task Tracker. This may take 30–60 seconds."}
+                : mode === "agent"
+                  ? "Running: search KB → look up history → classify → synthesise → push to TTT. This may take 30–90 seconds."
+                  : "Running RAG over the indexed content and pushing to Time Task Tracker. This may take 30–60 seconds."}
             </div>
           </div>
         </div>
@@ -214,7 +269,40 @@ export default function MeetingUpload({ token }) {
             </div>
           )}
 
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>
+          {/* Agent trace — only in agent mode */}
+          {result.steps?.length > 0 && (
+            <details className="agent-trace" open>
+              <summary style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", cursor: "pointer", marginBottom: 8 }}>
+                🤖 Agent trace — {result.steps.length} tool calls
+              </summary>
+              <div className="agent-steps">
+                {result.steps.map((step, i) => {
+                  const meta = TOOL_META[step.tool] || { label: step.tool, icon: "⚙️" };
+                  return (
+                    <div key={i} className="agent-step">
+                      <div className="agent-step-header">
+                        <span className="agent-step-icon">{meta.icon}</span>
+                        <span className="agent-step-tool">{meta.label}</span>
+                        <span className="agent-step-num">#{i + 1}</span>
+                      </div>
+                      <div className="agent-step-io">
+                        <div className="agent-step-input">
+                          <span className="agent-step-label">in</span>
+                          <code>{step.input}</code>
+                        </div>
+                        <div className="agent-step-output">
+                          <span className="agent-step-label">out</span>
+                          <span>{step.output}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
+
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8, marginTop: result.steps ? 12 : 0 }}>
             Meeting summary
           </div>
           <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--text)" }}>

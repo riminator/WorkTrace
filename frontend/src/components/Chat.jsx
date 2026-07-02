@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { chatWithKB } from "../api";
+import { chatWithKB, submitFeedback } from "../api";
 
 export default function Chat({ token }) {
-  const [messages, setMessages]   = useState([]);  // {role, content, sources?}
-  const [input, setInput]         = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState(null);
-  const bottomRef                 = useRef(null);
+  const [messages, setMessages] = useState([]);  // {role, content, sources?, question?, feedback?}
+  const [input, setInput]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+  const bottomRef               = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -29,12 +29,30 @@ export default function Chat({ token }) {
       const data = await chatWithKB({ question, history }, token);
       setMessages(prev => [
         ...prev,
-        { role: "assistant", content: data.answer, sources: data.sources },
+        { role: "assistant", content: data.answer, sources: data.sources, question, feedback: null },
       ]);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFeedback(msgIdx, rating) {
+    const msg = messages[msgIdx];
+    if (!msg || msg.feedback) return; // already rated
+    try {
+      await submitFeedback({
+        question: msg.question,
+        answer:   msg.content,
+        sources:  msg.sources || [],
+        rating,
+      }, token);
+      setMessages(prev => prev.map((m, i) =>
+        i === msgIdx ? { ...m, feedback: rating } : m
+      ));
+    } catch {
+      // silent — don't interrupt the chat experience for a failed rating
     }
   }
 
@@ -84,6 +102,30 @@ export default function Chat({ token }) {
                     ))}
                   </ul>
                 </details>
+              )}
+              {/* Feedback buttons — only on assistant messages */}
+              {msg.role === "assistant" && (
+                <div className="chat-feedback">
+                  {msg.feedback === null || msg.feedback === undefined ? (
+                    <>
+                      <span className="chat-feedback-label">Helpful?</span>
+                      <button
+                        className={`chat-feedback-btn`}
+                        title="Thumbs up"
+                        onClick={() => handleFeedback(i, 1)}
+                      >👍</button>
+                      <button
+                        className={`chat-feedback-btn`}
+                        title="Thumbs down"
+                        onClick={() => handleFeedback(i, -1)}
+                      >👎</button>
+                    </>
+                  ) : (
+                    <span className="chat-feedback-thanks">
+                      {msg.feedback === 1 ? "👍 Thanks!" : "👎 Noted — we'll improve."}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>

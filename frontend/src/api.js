@@ -104,3 +104,36 @@ export async function chatWithKB({ question, history = [], top_k = 5, source_fil
   if (!res.ok) await throwApiError(res);
   return res.json();
 }
+
+export async function submitFeedback({ question, answer, sources, rating, note }, token) {
+  const res = await fetch(`${BASE}/feedback`, {
+    method: "POST",
+    headers: authHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ question, answer, sources, rating, note: note || null }),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function getFeedbackStats(token, limit = 20) {
+  const res = await fetch(`${BASE}/feedback/stats?limit=${limit}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function agenticMeeting({ filename, project_code, organizer, attendees }, token) {
+  const res = await fetch(`${BASE}/agentic-meeting`, {
+    method: "POST",
+    headers: authHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      filename,
+      project_code: project_code || null,
+      organizer:    organizer    || null,
+      attendees:    attendees    || null,
+    }),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}

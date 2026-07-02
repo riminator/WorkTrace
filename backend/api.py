@@ -13,21 +13,27 @@ is used to scope every DB operation so users only see their own data.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import tempfile
-from datetime import date
+import uuid
+from datetime import date, datetime
 from typing import Annotated
 
 import httpx
+import psycopg2
+import psycopg2.extras
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from kb.auth import get_current_user
 from kb.chat import ChatMessage, ask as kb_ask
+from kb.config import TTT_DATABASE_URL, TTT_PGSSL
 from kb.db import init_db
 from kb.ingest import ingest
+from kb.llm import get_provider
 from kb.pusher import push_meeting_entry
 from kb.search import delete_source, list_sources
 from kb.search import search as kb_search
@@ -100,6 +106,37 @@ class ChatSourceOut(BaseModel):
 class ChatResponseOut(BaseModel):
     answer: str
     sources: list[ChatSourceOut]
+
+
+class FeedbackRequest(BaseModel):
+    question: str
+    answer: str
+    sources: list[dict] = []
+    rating: int          # 1 = thumbs up, -1 = thumbs down
+    note: str | None = None
+
+
+class AgenticMeetingRequest(BaseModel):
+    filename: str
+    project_code: str | None = None
+    organizer: str | None = None
+    attendees: str | None = None
+
+
+class AgentStep(BaseModel):
+    tool: str
+    input: str
+    output: str
+
+
+class AgenticMeetingResponse(BaseModel):
+    status: str
+    filename: str
+    answer: str
+    sources: list[ChatSourceOut]
+    steps: list[AgentStep]
+    ttt_entry_id: str | None = None
+    ttt_error: str | None = None
 
 
 class IngestMeetingResponse(BaseModel):
@@ -310,6 +347,250 @@ def summarize_meeting(
         filename=req.filename,
         answer=rag_result.answer,
         sources=[ChatSourceOut(**s) for s in rag_result.sources],
+        ttt_entry_id=ttt_id,
+        ttt_error=ttt_error,
+    )
+
+
+# ── Feedback ──────────────────────────────────────────────────────────────────
+
+def _feedback_conn():
+    if not TTT_DATABASE_URL:
+        raise HTTPException(status_code=503, detail="TTT_DATABASE_URL is not configured.")
+    sslmode = "require" if TTT_PGSSL else "disable"
+    return psycopg2.connect(TTT_DATABASE_URL, sslmode=sslmode)
+
+
+@app.post("/feedback", summary="Submit thumbs up/down rating for a chat response")
+def submit_feedback(
+    req: FeedbackRequest,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    if req.rating not in (1, -1):
+        raise HTTPException(status_code=422, detail="rating must be 1 or -1")
+    conn = _feedback_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO chat_feedback (id, user_id, question, answer, sources, rating, note)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        user_id,
+                        req.question,
+                        req.answer,
+                        json.dumps(req.sources),
+                        req.rating,
+                        req.note,
+                    ),
+                )
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.get("/feedback/stats", summary="Feedback statistics and low-rated queries")
+def feedback_stats(
+    limit: int = Query(20, ge=1, le=100),
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    conn = _feedback_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Overall counts
+            cur.execute(
+                "SELECT rating, COUNT(*) AS n FROM chat_feedback WHERE user_id = %s GROUP BY rating",
+                (user_id,),
+            )
+            counts = {r["rating"]: r["n"] for r in cur.fetchall()}
+
+            # Most recent low-rated entries
+            cur.execute(
+                """
+                SELECT id, question, answer, sources, rating, note, created_at
+                FROM chat_feedback
+                WHERE user_id = %s AND rating = -1
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user_id, limit),
+            )
+            low_rated = []
+            for row in cur.fetchall():
+                low_rated.append({
+                    "id":         row["id"],
+                    "question":   row["question"],
+                    "answer":     row["answer"],
+                    "sources":    row["sources"] if isinstance(row["sources"], list) else json.loads(row["sources"] or "[]"),
+                    "note":       row["note"],
+                    "createdAt":  row["created_at"].isoformat() if isinstance(row["created_at"], datetime) else str(row["created_at"]),
+                })
+
+            # High-rated entries for reference
+            cur.execute(
+                """
+                SELECT COUNT(*) AS n FROM chat_feedback
+                WHERE user_id = %s AND rating = 1
+                """,
+                (user_id,),
+            )
+            thumbs_up = cur.fetchone()["n"]
+
+    finally:
+        conn.close()
+
+    total = sum(counts.values())
+    return {
+        "total":      total,
+        "thumbsUp":   counts.get(1, 0),
+        "thumbsDown": counts.get(-1, 0),
+        "score":      round(counts.get(1, 0) / total * 100, 1) if total else None,
+        "lowRated":   low_rated,
+    }
+
+
+# ── Agentic meeting summariser ────────────────────────────────────────────────
+
+@app.post("/agentic-meeting", response_model=AgenticMeetingResponse,
+          summary="Multi-step agentic meeting summariser")
+def agentic_meeting(
+    req: AgenticMeetingRequest,
+    user_id: str = Depends(get_current_user),
+) -> AgenticMeetingResponse:
+    """
+    Agentic pipeline for meeting summarisation.  Rather than a single RAG call,
+    the agent runs a fixed sequence of tool calls that mirror how a human analyst
+    would approach summarising a meeting:
+
+      1. search_kb       — retrieve the most relevant chunks from the transcript
+      2. lookup_ttt      — find past TTT entries for the same project so the agent
+                           has historical context ("what did we discuss last time?")
+      3. classify        — determine project code and task type from the title
+      4. synthesise      — call the LLM with ALL gathered context to write the summary
+      5. push_ttt        — insert the resulting entry into the Time Task Tracker
+
+    Each tool call is recorded as a step and returned so the UI can render the
+    reasoning trace alongside the final answer.
+    """
+    steps: list[dict] = []
+    sources: list[dict] = []
+
+    # ── Tool 1: search_kb ────────────────────────────────────────────────────
+    search_query = f"meeting summary topics decisions action items {req.filename}"
+    raw_chunks = kb_search(search_query, top_k=5, source_filter=req.filename, user_id=user_id)
+    chunk_text = "\n\n".join(
+        f"[chunk {r.chunk_index}] {r.content}" for r in raw_chunks
+    ) or "No transcript chunks found."
+    sources = [{"source": r.source, "score": r.score, "chunk_index": r.chunk_index} for r in raw_chunks]
+    steps.append({
+        "tool":   "search_kb",
+        "input":  f'query="{search_query}" source_filter="{req.filename}"',
+        "output": f"Retrieved {len(raw_chunks)} chunks (scores: {', '.join(f'{r.score:.3f}' for r in raw_chunks)})",
+    })
+
+    # ── Tool 2: lookup_ttt ───────────────────────────────────────────────────
+    from kb.ttt import query_ttt  # local import — avoids circular on startup
+    project_hint = req.project_code or req.filename.split(".")[0]
+    ttt_context = query_ttt(
+        f"recent meetings for project {project_hint}",
+        force_meetings=True,
+        user_id=user_id,
+    )
+    steps.append({
+        "tool":   "lookup_ttt",
+        "input":  f'project="{project_hint}"',
+        "output": ttt_context[:300] + "…" if len(ttt_context) > 300 else (ttt_context or "No past entries found."),
+    })
+
+    # ── Tool 3: classify ─────────────────────────────────────────────────────
+    from ttt_api import _classify  # local import — ttt_api not imported at module level
+    classification = _classify(req.filename, req.organizer)
+    steps.append({
+        "tool":   "classify",
+        "input":  f'title="{req.filename}" organizer="{req.organizer}"',
+        "output": f"projectCode={classification['projectCode']} taskType={classification['taskType']} billable={classification['billable']} confidence={classification['confidence']}",
+    })
+
+    # ── Tool 4: synthesise ───────────────────────────────────────────────────
+    context_block = ""
+    if ttt_context:
+        context_block += f"=== Past TTT entries for this project ===\n{ttt_context}\n\n"
+    context_block += f"=== Meeting transcript chunks ===\n{chunk_text}"
+
+    system_prompt = (
+        "You are a meeting analyst. Using the transcript chunks and historical TTT context below, "
+        "write a concise 3-5 sentence meeting summary covering: topics discussed, decisions made, "
+        "action items, and how this meeting relates to past work on the project.\n\n"
+        f"Context:\n{context_block}"
+    )
+    llm = get_provider()
+    answer = llm.chat([
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": f"Summarise the meeting: {req.filename}"},
+    ])
+    steps.append({
+        "tool":   "synthesise",
+        "input":  f"chunks={len(raw_chunks)} ttt_context={'yes' if ttt_context else 'no'}",
+        "output": answer[:300] + "…" if len(answer) > 300 else answer,
+    })
+
+    # ── Tool 5: push_ttt ─────────────────────────────────────────────────────
+    ttt_id: str | None = None
+    ttt_error: str | None = None
+
+    # Pull header metadata from indexed doc
+    file_meta: dict = {}
+    try:
+        meta_hits = kb_search(req.filename, top_k=1, source_filter=req.filename, user_id=user_id)
+        if meta_hits:
+            file_meta = meta_hits[0].doc_metadata or {}
+    except Exception:
+        pass
+
+    entry_date: date | None = None
+    raw_date = file_meta.get("meeting_date")
+    if raw_date:
+        try:
+            entry_date = date.fromisoformat(raw_date)
+        except ValueError:
+            pass
+
+    try:
+        pushed = push_meeting_entry(
+            filename=file_meta.get("meeting_title") or req.filename,
+            summary=answer,
+            project_code=req.project_code or classification["projectCode"],
+            organizer=req.organizer or file_meta.get("organizer"),
+            attendees=req.attendees or file_meta.get("attendees"),
+            entry_date=entry_date,
+            meeting_time=file_meta.get("meeting_time"),
+            duration_minutes=file_meta.get("duration_minutes"),
+            billable=file_meta.get("billable", classification["billable"]),
+            user_id=user_id,
+        )
+        ttt_id = pushed.get("id")
+        steps.append({
+            "tool":   "push_ttt",
+            "input":  f'project="{req.project_code or classification["projectCode"]}"',
+            "output": f"Entry created: id={ttt_id}",
+        })
+    except Exception as exc:
+        ttt_error = str(exc)
+        steps.append({
+            "tool":   "push_ttt",
+            "input":  f'project="{req.project_code or classification["projectCode"]}"',
+            "output": f"Error: {ttt_error}",
+        })
+
+    return AgenticMeetingResponse(
+        status="ok",
+        filename=req.filename,
+        answer=answer,
+        sources=[ChatSourceOut(**s) for s in sources],
+        steps=[AgentStep(**s) for s in steps],
         ttt_entry_id=ttt_id,
         ttt_error=ttt_error,
     )

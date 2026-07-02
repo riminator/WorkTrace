@@ -64,6 +64,22 @@ def init_db() -> None:
         conn.execute(text(
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"
         ))
+        # Feedback table for chat response ratings
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_feedback (
+                id          VARCHAR(36)   PRIMARY KEY,
+                user_id     VARCHAR(36)   NOT NULL,
+                question    TEXT          NOT NULL,
+                answer      TEXT          NOT NULL,
+                sources     JSONB         NOT NULL DEFAULT '[]',
+                rating      SMALLINT      NOT NULL CHECK (rating IN (1, -1)),
+                note        TEXT,
+                created_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS chat_feedback_user_idx ON chat_feedback (user_id)"
+        ))
         conn.commit()
 
 
