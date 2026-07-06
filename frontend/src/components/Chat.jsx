@@ -58,6 +58,7 @@ export default function Chat({ token }) {
   const [sidebarOpen,    setSidebarOpen]    = useState(true);
   const bottomRef  = useRef(null);
   const renameRef  = useRef(null);
+  const abortRef   = useRef(null);
 
   const activeSession = sessions.find(s => s.id === activeId) || sessions[0];
   const messages      = activeSession?.messages || [];
@@ -128,8 +129,10 @@ export default function Chat({ token }) {
     setLoading(true);
     setError(null);
 
+    abortRef.current = new AbortController();
+
     try {
-      const data = await chatWithKB({ question, history }, token);
+      const data = await chatWithKB({ question, history }, token, abortRef.current.signal);
       const assistantMsg = {
         role: "assistant", content: data.answer,
         sources: data.sources, question, feedback: null,
@@ -144,8 +147,9 @@ export default function Chat({ token }) {
         return { ...s, messages: newMsgs, label };
       }));
     } catch (err) {
-      setError(err.message);
+      if (err.name !== "AbortError") setError(err.message);
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
   }
@@ -299,7 +303,13 @@ export default function Chat({ token }) {
               onChange={e => setInput(e.target.value)}
               disabled={loading}
             />
-            <button className="btn btn-primary" type="submit" disabled={loading || !input.trim()}>Send</button>
+            {loading ? (
+              <button className="btn btn-stop" type="button" onClick={() => abortRef.current?.abort()}>
+                ⏹ Stop
+              </button>
+            ) : (
+              <button className="btn btn-primary" type="submit" disabled={!input.trim()}>Send</button>
+            )}
           </form>
         </div>
       </div>

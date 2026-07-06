@@ -95,11 +95,12 @@ export async function summarizeMeeting({ filename, project_code, organizer, atte
   return res.json();
 }
 
-export async function chatWithKB({ question, history = [], top_k = 5, source_filter, file_type }, token) {
+export async function chatWithKB({ question, history = [], top_k = 5, source_filter, file_type }, token, signal) {
   const res = await fetch(`${BASE}/chat`, {
     method: "POST",
     headers: authHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ question, history, top_k, source_filter: source_filter || null, file_type: file_type || null }),
+    signal,
   });
   if (!res.ok) await throwApiError(res);
   return res.json();

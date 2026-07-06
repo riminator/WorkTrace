@@ -352,6 +352,13 @@ body {
   border-radius: 6px;
 }
 .btn-danger:hover { background: var(--danger-light); }
+.btn-stop {
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.btn-stop:hover { background: var(--danger-light); border-color: #fca5a5; color: var(--danger); }
 
 /* ── Search row / filters ────────────────────────────────────── */
 .search-row { display: flex; gap: 8px; }
