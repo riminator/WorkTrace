@@ -17,13 +17,14 @@ A component-by-component breakdown of how WorkTrace works under the hood.
 9. [LLM provider abstraction](#9-llm-provider-abstraction)
 10. [Meeting intelligence pipeline](#10-meeting-intelligence-pipeline)
 11. [Agentic meeting summariser](#11-agentic-meeting-summariser)
-12. [Chat feedback loop](#12-chat-feedback-loop)
-13. [Time Task Tracker — write path](#13-time-task-tracker--write-path)
-14. [Time Task Tracker — read path (chat context)](#14-time-task-tracker--read-path-chat-context)
-15. [TTT REST API](#15-ttt-rest-api)
-16. [Frontend architecture](#16-frontend-architecture)
-17. [OpenShift deployment](#17-openshift-deployment)
-18. [File reference](#18-file-reference)
+12. [LangChain pipeline](#12-langchain-pipeline)
+13. [Chat feedback loop](#13-chat-feedback-loop)
+14. [Time Task Tracker — write path](#14-time-task-tracker--write-path)
+15. [Time Task Tracker — read path (chat context)](#15-time-task-tracker--read-path-chat-context)
+16. [TTT REST API](#16-ttt-rest-api)
+17. [Frontend architecture](#17-frontend-architecture)
+18. [OpenShift deployment](#18-openshift-deployment)
+19. [File reference](#19-file-reference)
 
 ---
 
@@ -154,6 +155,7 @@ Every other module imports constants directly from `config.py`. Nothing reads `o
 | `WATSONX_MODEL_ID` | watsonx.ai model ID |
 | `WATSONX_URL` | watsonx.ai inference URL |
 | `RAG_TOP_K` | Default number of chunks retrieved per search |
+| `USE_LANGCHAIN` | `true` to route RAG + agentic calls through LangChain; `false` (default) uses custom pipeline |
 
 ### Environment variable precedence (OpenShift)
 
@@ -447,7 +449,11 @@ Receives `{filename, project_code, organizer, attendees}` as JSON.
 
 File: [`backend/api.py`](backend/api.py) — `POST /agentic-meeting`
 
-After a transcript has been ingested (via `POST /ingest-meeting`), the agentic endpoint runs a deterministic 5-step tool-call pipeline. Unlike the standard single-pass RAG, it gathers context from multiple sources before calling the LLM:
+After a transcript has been ingested (via `POST /ingest-meeting`), the agentic endpoint runs a multi-step tool-call pipeline. The implementation used depends on `USE_LANGCHAIN`.
+
+### Custom pipeline (`USE_LANGCHAIN=false`, default)
+
+Deterministic 5-step sequence — all steps always run in order:
 
 | Step | Tool name | Implementation | What it does |
 |---|---|---|---|
@@ -457,15 +463,68 @@ After a transcript has been ingested (via `POST /ingest-meeting`), the agentic e
 | 4 | `synthesise` | `get_provider().chat(messages)` | LLM call with all gathered context (chunks + TTT history) |
 | 5 | `push_ttt` | `push_meeting_entry(…)` | Inserts the time entry into `time_entries` |
 
-Every step's input and output is recorded as an `AgentStep` object and returned in the response. The frontend renders these as a collapsible **Agent trace** panel with icons, tool names, and truncated I/O.
+### LangChain pipeline (`USE_LANGCHAIN=true`)
 
-### Why this teaches agentic patterns
+File: [`backend/kb/lc_agent.py`](backend/kb/lc_agent.py)
 
-This is a **fixed-order, tool-augmented** agent — not a free-form ReAct loop, but the same conceptual building block. Each step corresponds to a tool call with explicit inputs and outputs. The LLM only runs once (step 4) after all context is gathered, which avoids cascading errors from intermediate reasoning. This pattern maps directly to production systems that pre-fetch structured data before calling an LLM.
+Uses a LangChain `AgentExecutor` with three `@tool`-decorated functions. The LLM dynamically decides which tools to call, in what order, and whether to retry:
+
+| Tool | What it does |
+|---|---|
+| `search_kb` | Calls `kb_search()` — same underlying pgvector query |
+| `lookup_ttt` | Calls `query_ttt()` — same TTT SQL query |
+| `push_to_ttt` | Calls `push_meeting_entry()` — same DB insert |
+
+The `classify` step is removed — the LLM infers the project code from context when constructing the `push_to_ttt` call. The agent may call tools multiple times or in a different order if it determines more context is needed (up to `max_iterations=8`).
+
+Every step's input and output is recorded as an `AgentStep` and returned in the response. The frontend renders these as a collapsible **Agent trace** panel — identical UI for both implementations.
 
 ---
 
-## 12. Chat feedback loop
+## 12. LangChain pipeline
+
+Files: [`backend/kb/lc_embedder.py`](backend/kb/lc_embedder.py) · [`backend/kb/lc_llm.py`](backend/kb/lc_llm.py) · [`backend/kb/lc_chat.py`](backend/kb/lc_chat.py) · [`backend/kb/lc_agent.py`](backend/kb/lc_agent.py)
+
+Activated when `USE_LANGCHAIN=true`. All four files are lazy-imported inside `chat.py:ask()` and `api.py:agentic_meeting()` — the LangChain packages are not loaded at all when the flag is `false`.
+
+### lc_embedder.py
+
+Wraps the existing `NomicEmbedder` and `OllamaEmbedder` classes in LangChain's `Embeddings` interface (`embed_documents` / `embed_query`). The underlying HTTP calls are identical — this is purely an adapter so LC chains can use them.
+
+### lc_llm.py
+
+`get_lc_llm()` factory — returns `ChatWatsonx` / `ChatOpenAI` / `ChatOllama` based on `LLM_PROVIDER`. Parameters (model ID, API key, URL) are read from the same `config.py` constants used by the custom providers.
+
+### lc_chat.py
+
+LCEL RAG chain — drop-in for `kb/chat.py`. Retrieval is identical (same `search()` and `query_ttt()` calls). The LLM call changes:
+
+```
+Custom:   llm.chat([{"role": "system", ...}, ...history..., {"role": "user", ...}])
+LC:       (ChatPromptTemplate | ChatWatsonx | StrOutputParser).invoke({...})
+```
+
+History is converted from `ChatMessage` dataclass objects to LangChain `HumanMessage`/`AIMessage` and passed into a `MessagesPlaceholder` in the prompt template.
+
+### lc_agent.py
+
+`run_agentic_meeting()` — replaces the fixed 5-step sequence in `api.py`. Uses `create_tool_calling_agent` + `AgentExecutor`. Tool functions use `threading.local()` to access request-scoped values (`user_id`, `filename`) without global state, making concurrent requests safe.
+
+### Switching between implementations
+
+```bash
+# Enable LangChain
+USE_LANGCHAIN=true   # in deploy.env, then re-run deploy.sh
+
+# Revert to custom
+USE_LANGCHAIN=false
+```
+
+No rebuild required — the flag is read from the environment at runtime on each request.
+
+---
+
+## 13. Chat feedback loop
 
 Files: [`backend/api.py`](backend/api.py) · [`backend/kb/db.py`](backend/kb/db.py) · [`frontend/src/components/Chat.jsx`](frontend/src/components/Chat.jsx) · [`frontend/src/components/FeedbackStats.jsx`](frontend/src/components/FeedbackStats.jsx)
 
@@ -511,7 +570,7 @@ The `chat_feedback` table is the data collection layer of a human feedback loop.
 
 ---
 
-## 13. Time Task Tracker — write path
+## 14. Time Task Tracker — write path
 
 File: [`backend/kb/pusher.py`](backend/kb/pusher.py)
 
@@ -536,7 +595,7 @@ Defaults to 60 minutes if nothing is found.
 
 ---
 
-## 14. Time Task Tracker — read path (chat context)
+## 15. Time Task Tracker — read path (chat context)
 
 File: [`backend/kb/ttt.py`](backend/kb/ttt.py)
 
@@ -558,7 +617,7 @@ Results are formatted as a readable text block prepended with `[Time Task Tracke
 
 ---
 
-## 15. TTT REST API
+## 16. TTT REST API
 
 File: [`backend/ttt_api.py`](backend/ttt_api.py)
 
@@ -611,7 +670,7 @@ Parses `VEVENT` blocks. `DTSTART`/`DTEND` provide start time, end time, and date
 
 ---
 
-## 16. Frontend architecture
+## 17. Frontend architecture
 
 Files: [`frontend/src/`](frontend/src/)
 
@@ -684,7 +743,7 @@ classifyMeeting(title, organizer, token)                // POST /ttt/classify
 
 ---
 
-## 17. OpenShift deployment
+## 18. OpenShift deployment
 
 Files: [`openshift/`](openshift/)
 
@@ -729,7 +788,7 @@ Without this, login redirects will fail.
 
 ---
 
-## 18. File reference
+## 19. File reference
 
 ### Configuration
 
@@ -746,15 +805,19 @@ Without this, login redirects will fail.
 
 | File | Description |
 |---|---|
-| `config.py` | Loads `.env`, exports all config constants |
+| `config.py` | Loads `.env`, exports all config constants (incl. `USE_LANGCHAIN`) |
 | `auth.py` | Supabase JWT validation — ES256 (JWKS) + HS256 (static secret), returns `user_id` |
 | `db.py` | SQLAlchemy engine, `SessionLocal`, `Document` ORM model, `init_db()` |
 | `embedder.py` | `embed(text) → list[float]` — Nomic or Ollama provider |
 | `extractors.py` | File-type dispatch → 800-char / 100-overlap chunking + meeting metadata extraction |
 | `ingest.py` | Orchestrates discovery → dedup → extract → embed → upsert, with user isolation |
 | `search.py` | Cosine search, snippet extraction, `list_sources`, `delete_source` |
-| `chat.py` | RAG pipeline: intent classify → retrieve → re-rank → TTT inject → prompt → LLM |
+| `chat.py` | RAG pipeline: intent classify → retrieve → re-rank → TTT inject → prompt → LLM; routes to `lc_chat.py` when `USE_LANGCHAIN=true` |
 | `llm.py` | `BaseLLMProvider` ABC → `OllamaProvider` / `OpenAIProvider` / `WatsonxProvider` |
+| `lc_embedder.py` | LangChain `Embeddings` adapter wrapping `NomicEmbedder` / `OllamaEmbedder` |
+| `lc_llm.py` | `get_lc_llm()` factory → `ChatWatsonx` / `ChatOpenAI` / `ChatOllama` |
+| `lc_chat.py` | LCEL RAG chain — drop-in for `chat.py` when `USE_LANGCHAIN=true` |
+| `lc_agent.py` | LangChain `AgentExecutor` — drop-in for the fixed 5-step agentic pipeline |
 | `pusher.py` | Writes meeting summaries to `time_entries` via direct psycopg2 |
 | `ttt.py` | Reads TTT rows for RAG context injection |
 | `cli.py` | Click CLI: `kb init` · `kb ingest <path>` · `kb search <query>` · `kb list` · `kb delete <source>` |

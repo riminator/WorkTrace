@@ -11,6 +11,7 @@ A document and meeting intelligence platform. Upload any file, ask questions in 
 | **RAG chat** | Multi-turn conversational Q&A grounded in your documents |
 | **Meeting intelligence** | Ingest transcripts, auto-extract metadata, generate summaries |
 | **Agentic meeting summariser** | 5-step agent loop: search KB → look up TTT history → classify → synthesise → push; full reasoning trace visible in the UI |
+| **LangChain pipeline** | Optional drop-in replacement for the RAG and agentic pipelines — activate with `USE_LANGCHAIN=true`; custom implementation kept as fallback |
 | **Chat feedback loop** | Thumbs up/down on every response; approval score dashboard; low-rated query log for iterative improvement |
 | **Time Task Tracker** | Meeting summaries auto-pushed to `time_entries` — dashboard, reports, CSV export |
 | **Multi-user isolation** | Every document and entry scoped to the authenticated Supabase user |
@@ -29,13 +30,17 @@ WorkTrace/
 │   ├── ttt_api.py            Time Task Tracker routes (/ttt/*)
 │   ├── kb/                   Core library
 │   │   ├── auth.py           Supabase JWT validation (ES256 + HS256)
-│   │   ├── chat.py           RAG pipeline — retrieve → prompt → LLM
-│   │   ├── config.py         All env-var config in one place
+│   │   ├── chat.py           RAG pipeline — retrieve → prompt → LLM (routes to LC when USE_LANGCHAIN=true)
+│   │   ├── config.py         All env-var config in one place (incl. USE_LANGCHAIN flag)
 │   │   ├── db.py             SQLAlchemy engine + Document ORM model
 │   │   ├── embedder.py       Nomic / Ollama embedding
 │   │   ├── extractors.py     File parsing + chunking (800 chars, 100 overlap)
 │   │   ├── ingest.py         Ingest orchestrator with dedup + force re-index
 │   │   ├── llm.py            LLM provider abstraction (watsonx / OpenAI / Ollama)
+│   │   ├── lc_embedder.py    LangChain Embeddings wrapper (activated by USE_LANGCHAIN=true)
+│   │   ├── lc_llm.py         LangChain chat model factory
+│   │   ├── lc_chat.py        LCEL RAG chain — drop-in for chat.py
+│   │   ├── lc_agent.py       LangChain AgentExecutor — drop-in for agentic pipeline
 │   │   ├── pusher.py         TTT push — write meeting entries to time_entries
 │   │   ├── search.py         Cosine search + list/delete sources
 │   │   └── ttt.py            TTT query layer for RAG context
@@ -181,6 +186,29 @@ Switch by setting `LLM_PROVIDER` in `deploy.env` (or `.env` locally):
 | **Groq** | `LLM_PROVIDER=openai` + `OPENAI_API_KEY=gsk_...` + `OPENAI_BASE_URL=https://api.groq.com/openai/v1` + `OPENAI_CHAT_MODEL=llama-3.1-8b-instant` |
 | **OpenAI** | `LLM_PROVIDER=openai` + `OPENAI_API_KEY=sk-...` |
 | **Ollama** (local) | `LLM_PROVIDER=ollama` + `OLLAMA_HOST` + `OLLAMA_CHAT_MODEL` |
+
+---
+
+## LangChain pipeline (optional)
+
+WorkTrace ships with an optional LangChain pipeline that can replace the custom RAG and agentic implementations. The custom code is always kept as a fallback.
+
+Set `USE_LANGCHAIN=true` in `deploy.env` (or `.env` locally) to activate it:
+
+```bash
+# deploy.env
+USE_LANGCHAIN=true   # use LangChain LCEL + AgentExecutor
+# USE_LANGCHAIN=false  # (default) use custom hand-rolled pipeline
+```
+
+| Mode | `USE_LANGCHAIN=false` (default) | `USE_LANGCHAIN=true` |
+|---|---|---|
+| RAG chat | Hand-rolled prompt + `WatsonxProvider.chat()` | LCEL pipe: `ChatPromptTemplate \| ChatWatsonx \| StrOutputParser` |
+| Agentic meeting | Fixed 5-step sequence (always runs all steps) | `AgentExecutor` — LLM dynamically decides which tools to call and how many times |
+| Retrieval | Same `search()` + `query_ttt()` calls | Same (unchanged) |
+| Embeddings | Direct Nomic/Ollama HTTP calls | Same calls wrapped in `LCNomicEmbeddings` / `LCOllamaEmbeddings` |
+
+New files added: [`backend/kb/lc_embedder.py`](backend/kb/lc_embedder.py) · [`backend/kb/lc_llm.py`](backend/kb/lc_llm.py) · [`backend/kb/lc_chat.py`](backend/kb/lc_chat.py) · [`backend/kb/lc_agent.py`](backend/kb/lc_agent.py)
 
 ---
 

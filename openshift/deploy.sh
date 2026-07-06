@@ -183,6 +183,7 @@ oc create secret generic knowledgebase-secrets \
   --from-literal=EMBED_DIMENSIONS="$EMBED_DIMENSIONS" \
   --from-literal=LLM_PROVIDER="$LLM_PROVIDER" \
   --from-literal=RAG_TOP_K="$RAG_TOP_K" \
+  --from-literal=USE_LANGCHAIN="${USE_LANGCHAIN:-false}" \
   "${LLM_ARGS[@]}" \
   --dry-run=client -o yaml | oc apply -f -
 echo "  ✓ Secret applied"

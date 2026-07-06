@@ -63,6 +63,7 @@ WorkTrace is a document and meeting intelligence platform. Upload any file, ask 
 | **Semantic search** | pgvector cosine similarity — find content by meaning, not keywords |
 | **RAG chat** | Multi-turn conversational Q&A grounded in your indexed documents |
 | **Agentic meeting summariser** | 5-step agent loop (search KB → look up TTT history → classify → synthesise → push); full tool-call trace displayed in the UI |
+| **LangChain pipeline** | Optional drop-in for RAG chat and agentic summarisation — activate with `USE_LANGCHAIN=true`; custom implementation always kept as fallback |
 | **Chat feedback loop** | Thumbs up/down on every assistant message; approval score + low-rated query log in the Feedback tab |
 | **Meeting intelligence** | Ingest transcripts, auto-extract metadata, generate structured summaries |
 | **Time Task Tracker (TTT)** | Meeting summaries auto-pushed to `time_entries`; dashboard, manual entry, reports, CSV export, calendar import |
@@ -112,7 +113,9 @@ The Meeting Upload tab accepts meeting transcripts. Supported formats include TX
 
 #### Agentic mode
 
-Runs a 5-step agent pipeline that produces a richer summary by combining document retrieval with historical project context:
+Runs a multi-step agent pipeline that produces a richer summary by combining document retrieval with historical project context. Two implementations are available, selected by the `USE_LANGCHAIN` flag:
+
+**Custom pipeline** (`USE_LANGCHAIN=false`, default) — fixed 5-step sequence:
 
 | Step | Tool | What it does |
 |---|---|---|
@@ -121,6 +124,8 @@ Runs a 5-step agent pipeline that produces a richer summary by combining documen
 | 3 | `classify` | Infers project code, task type, and billable flag from the filename and organizer |
 | 4 | `synthesise` | Calls the LLM with all gathered context (chunks + history) |
 | 5 | `push_ttt` | Inserts the completed time entry into the Time Task Tracker |
+
+**LangChain pipeline** (`USE_LANGCHAIN=true`) — `AgentExecutor` with the same three tools (`search_kb`, `lookup_ttt`, `push_to_ttt`). The LLM dynamically decides which tools to call, in what order, and whether to retry. The `classify` step is removed — the LLM infers project code from context.
 
 After completion, the full agent trace (each tool's inputs and outputs) is shown in the UI so the reasoning process is transparent.
 
@@ -237,13 +242,27 @@ The embedding provider is configured separately via `EMBED_PROVIDER` (`nomic` or
 
 ---
 
+## LangChain pipeline (optional)
+
+Set `USE_LANGCHAIN=true` in `deploy.env` to route the RAG chat and agentic meeting pipelines through LangChain. The custom implementation is always preserved as a fallback.
+
+| Aspect | Custom (default) | LangChain |
+|---|---|---|
+| RAG chat driver | `WatsonxProvider.chat()` / httpx | `ChatWatsonx` / `ChatOpenAI` / `ChatOllama` via LCEL pipe |
+| Agentic tool order | Fixed 5-step sequence | Dynamic — `AgentExecutor` lets the LLM decide |
+| Retrieval | `search()` + `query_ttt()` (unchanged) | Same |
+
+See [`Technical.md`](Technical.md) for implementation details.
+
+---
+
 ## System responsibilities summary
 
 | Layer | Role |
 |---|---|
 | **Frontend** | User interaction, login/logout, KB tabs (Chat, Search, Upload, Meeting, Sources, Feedback), TTT tabs — [`frontend/src/App.jsx`](frontend/src/App.jsx) |
 | **Backend API** | Request handling, JWT auth, orchestration — [`backend/api.py`](backend/api.py) + [`backend/ttt_api.py`](backend/ttt_api.py) |
-| **Knowledge engine** | Extraction, embedding, retrieval, chat — [`backend/kb/`](backend/kb/) |
+| **Knowledge engine** | Extraction, embedding, retrieval, chat — [`backend/kb/`](backend/kb/) (+ LangChain equivalents in `lc_*.py`) |
 | **Auth layer** | Supabase JWT validation (ES256 + HS256) — [`backend/kb/auth.py`](backend/kb/auth.py) |
 | **Vector store** | Chunks, metadata, embeddings in PostgreSQL + pgvector |
 | **TTT store** | Time entries in a separate PostgreSQL database (Neon or in-cluster) |
