@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { chatWithKB, submitFeedback } from "../api";
+import MarkdownContent from "./MarkdownContent";
 
 export default function Chat({ token }) {
   const [messages, setMessages] = useState([]);  // {role, content, sources?, question?, feedback?}
@@ -85,7 +86,11 @@ export default function Chat({ token }) {
         {messages.map((msg, i) => (
           <div key={i} className={`chat-bubble-wrap ${msg.role}`}>
             <div className={`chat-bubble ${msg.role}`}>
-              <div className="chat-text">{msg.content}</div>
+              <div className="chat-text">
+                {msg.role === "assistant"
+                  ? <MarkdownContent content={msg.content} />
+                  : msg.content}
+              </div>
               {msg.sources?.length > 0 && (
                 <details className="chat-sources">
                   <summary>{msg.sources.length} source{msg.sources.length > 1 ? "s" : ""}</summary>
