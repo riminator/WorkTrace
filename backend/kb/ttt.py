@@ -297,7 +297,7 @@ def query_ttt(
 
     # ── format rows as readable context ──────────────────────────────────────
     lines = [f"[Time Task Tracker — {len(rows)} result(s), {start} to {end}]"]
-    for row in rows:
+    for idx, row in enumerate(rows, 1):
         row = dict(row)
         # Convert Decimal to float for display
         mins = float(row.get("total_minutes") or row.get("duration_minutes") or 0)
@@ -312,13 +312,17 @@ def query_ttt(
                 f"Period: {row['from_date']} – {row['to_date']}"
             )
         else:
-            # Individual entry
-            desc = (row.get("description") or "")[:800].replace("\n", " ")
+            # Individual entry — use a clearly structured multi-line block so the
+            # LLM cannot accidentally skip or merge entries.
+            title = row.get("meeting_title") or "(no title)"
+            desc  = (row.get("description") or "")[:800].replace("\n", " ")
             lines.append(
-                f"  [{row['entry_date']}] {row['project_code']} / {row['task_type']} | "
-                f"{mins:.0f} min | Billable: {row.get('billable', False)} | "
-                f"Status: {row.get('status')} | {row.get('meeting_title') or ''}\n"
-                f"    Summary: {desc}"
+                f"\nEntry {idx}:\n"
+                f"  Date: {row['entry_date']}\n"
+                f"  Project: {row['project_code']}\n"
+                f"  Title: {title}\n"
+                f"  Duration: {mins:.0f} min\n"
+                f"  Summary: {desc}"
             )
 
     return "\n".join(lines) + "\n"
