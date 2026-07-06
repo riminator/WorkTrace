@@ -38,6 +38,16 @@ a proper summary — expand the bullet-point notes into clear sentences. \
 Do NOT just repeat the meeting title. Do NOT say you lack information if the \
 TTT entry has a description; use it.
 
+Formatting rules — always follow these:
+- Use markdown in your responses.
+- When listing multiple items (meetings, entries, tasks, etc.), use a markdown \
+bullet list (- item) or a table, never a run-on paragraph.
+- For each meeting or time entry, present the key details as bullet points \
+(e.g. - **Project:** …, - **Duration:** …, - **Summary:** …).
+- Use **bold** for labels/headings within a list item.
+- Use a markdown table when comparing data across multiple fields.
+- Keep prose concise; prefer structured output over long paragraphs.
+
 Context:
 {context}
 """
