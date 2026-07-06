@@ -58,6 +58,11 @@ RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "5"))
 TTT_DATABASE_URL: str = os.getenv("TTT_DATABASE_URL", "")
 TTT_PGSSL: bool = os.getenv("TTT_PGSSL", "true").lower() == "true"
 
+# ── LangChain toggle ──────────────────────────────────────────────────────────
+# Set USE_LANGCHAIN=true to route RAG + agentic calls through LangChain.
+# The custom (non-LC) implementation is always kept as a fallback.
+USE_LANGCHAIN: bool = os.getenv("USE_LANGCHAIN", "false").lower() == "true"
+
 # ── Supabase Auth ─────────────────────────────────────────────────────────────
 # Both found in Supabase dashboard → Project Settings → API
 SUPABASE_URL: str        = os.getenv("SUPABASE_URL", "")         # e.g. https://xyz.supabase.co

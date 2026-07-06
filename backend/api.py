@@ -461,20 +461,35 @@ def agentic_meeting(
     user_id: str = Depends(get_current_user),
 ) -> AgenticMeetingResponse:
     """
-    Agentic pipeline for meeting summarisation.  Rather than a single RAG call,
-    the agent runs a fixed sequence of tool calls that mirror how a human analyst
-    would approach summarising a meeting:
+    Agentic pipeline for meeting summarisation.
 
-      1. search_kb       — retrieve the most relevant chunks from the transcript
-      2. lookup_ttt      — find past TTT entries for the same project so the agent
-                           has historical context ("what did we discuss last time?")
-      3. classify        — determine project code and task type from the title
-      4. synthesise      — call the LLM with ALL gathered context to write the summary
-      5. push_ttt        — insert the resulting entry into the Time Task Tracker
+    When USE_LANGCHAIN=true: delegates to kb/lc_agent.py — a LangChain
+    AgentExecutor where the LLM dynamically decides which tools to call.
 
-    Each tool call is recorded as a step and returned so the UI can render the
-    reasoning trace alongside the final answer.
+    When USE_LANGCHAIN=false (default): runs the fixed 5-step sequence below
+    (search_kb → lookup_ttt → classify → synthesise → push_ttt).
     """
+    from kb.config import USE_LANGCHAIN
+    if USE_LANGCHAIN:
+        from kb.lc_agent import run_agentic_meeting
+        lc_result = run_agentic_meeting(
+            filename=req.filename,
+            project_code=req.project_code,
+            organizer=req.organizer,
+            attendees=req.attendees,
+            user_id=user_id,
+        )
+        return AgenticMeetingResponse(
+            status="ok",
+            filename=req.filename,
+            answer=lc_result["answer"],
+            sources=[],
+            steps=[AgentStep(**s) for s in lc_result["steps"]],
+            ttt_entry_id=lc_result["ttt_entry_id"],
+            ttt_error=lc_result["ttt_error"],
+        )
+
+    # ── Custom fixed-step pipeline (fallback / default) ───────────────────────
     steps: list[dict] = []
     sources: list[dict] = []
 

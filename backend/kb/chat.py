@@ -9,6 +9,9 @@ Flow:
 
 The conversation history is passed in by the caller so the LLM has
 multi-turn context (the KB retrieval always uses only the latest question).
+
+When USE_LANGCHAIN=true this module delegates to kb/lc_chat.py (LCEL pipeline)
+while keeping the custom implementation below as a permanent fallback.
 """
 from __future__ import annotations
 
@@ -80,6 +83,9 @@ def ask(
     """
     Run the RAG pipeline for a single question.
 
+    Routes to the LangChain LCEL pipeline when USE_LANGCHAIN=true,
+    otherwise runs the custom hand-rolled pipeline below.
+
     Args:
         question:      The user's latest question.
         history:       Prior turns (excluding the current question).
@@ -91,6 +97,18 @@ def ask(
     Returns:
         ChatResponse with the LLM answer and retrieved source metadata.
     """
+    from kb.config import USE_LANGCHAIN
+    if USE_LANGCHAIN:
+        from kb import lc_chat
+        return lc_chat.ask(
+            question, history,
+            top_k=top_k,
+            source_filter=source_filter,
+            file_type=file_type,
+            skip_ttt=skip_ttt,
+            user_id=user_id,
+        )
+
     # 1. Temporal-meeting intent: use ONLY the TTT as the source of truth.
     #    The vector KB can't reliably identify "most recent" — it returns
     #    semantically similar chunks (e.g. a WorkTrace demo PDF) which the LLM

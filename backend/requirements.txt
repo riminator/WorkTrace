@@ -23,3 +23,12 @@ python-multipart>=0.0.9
 python-dotenv>=1.0.1
 tqdm>=4.66.4
 rich>=13.7.1
+
+# ── LangChain (optional — activated via USE_LANGCHAIN=true) ──────────────────
+# Core + LCEL
+langchain-core>=0.2.0
+langchain>=0.2.0
+# Provider integrations
+langchain-ibm>=0.1.0
+langchain-openai>=0.1.0
+langchain-ollama>=0.1.0
