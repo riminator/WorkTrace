@@ -58,7 +58,11 @@ _TEMPORAL_PATTERNS = re.compile(
     r"\b(last|latest|most recent|recent|newest|previous|before)\b.{0,40}\b(meeting|standup|stand-up|call|sync|session)s?\b"
     r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,40}\b(last|latest|most recent|recent|newest|previous|before)\b"
     r"|\b(summarize|summarise|recap|summary of).{0,40}\b(meeting|standup|stand-up|call|sync|session)s?\b"
-    r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,40}\b(summary|recap|summarize|summarise)\b",
+    r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,40}\b(summary|recap|summarize|summarise)\b"
+    # date-scoped meeting listing: "meetings today", "list my meetings today", etc.
+    r"|\b(meeting|standup|stand-up|call|sync|session)s?\b.{0,60}\b(today|yesterday|this week|this month|last week|last month)\b"
+    r"|\b(today|yesterday|this week|this month|last week|last month)\b.{0,60}\b(meeting|standup|stand-up|call|sync|session)s?\b"
+    r"|\b(list|show|what).{0,40}\b(meeting|standup|stand-up|call|sync|session)s?\b",
     re.IGNORECASE,
 )
 

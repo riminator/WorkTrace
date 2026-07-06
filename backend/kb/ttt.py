@@ -49,7 +49,7 @@ _MEETING_HISTORY_PATTERNS = re.compile(
     r"\b(before|prior|previous|earlier|other|another)\b.{0,40}\bmeetings?\b"
     r"|\bmeetings?\b.{0,40}\b(before|prior|previous|earlier|other|another|this)\b"
     r"|\ball (my |the )?meetings?\b"
-    r"|\blist (my |the )?meetings?\b"
+    r"|\blist (my |all of the |the )?meetings?\b"
     r"|\bhow many meetings?\b"
     r"|\bmeeting histor(y|ies)\b"
     r"|\bprevious meetings?\b"
@@ -59,7 +59,11 @@ _MEETING_HISTORY_PATTERNS = re.compile(
     r"|\blast \w+ meetings?\b"
     r"|\brecent meetings?\b"
     r"|\b(two|three|four|five|2|3|4|5) meetings?\b"
-    r"|\bsummar\w+ \w* meetings?\b",
+    r"|\bsummar\w+ \w* meetings?\b"
+    # date-scoped: "meetings today", "meetings this week", "what meetings did I have today"
+    r"|\bmeetings?\b.{0,60}\b(today|yesterday|this week|this month|last week|last month)\b"
+    r"|\b(today|yesterday|this week|this month|last week|last month)\b.{0,60}\bmeetings?\b"
+    r"|\b(list|show|what).{0,40}\bmeetings?\b",
     re.IGNORECASE,
 )
 
