@@ -461,7 +461,6 @@ def update_entry(
             col = col_map.get(key, key)
             set_parts.append(f"{col} = %s")
             params.append(val)
-        set_parts.append("updated_at = NOW()")
         params += [entry_id, user_id]
 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
