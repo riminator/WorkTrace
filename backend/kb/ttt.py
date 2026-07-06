@@ -213,7 +213,7 @@ def query_ttt(
               AND entry_date BETWEEN %(start)s AND %(end)s
             {project_filter}
             {user_filter}
-            ORDER BY entry_date DESC, start_time DESC NULLS LAST, created_at DESC NULLS LAST
+            ORDER BY entry_date DESC, start_time DESC NULLS LAST
             LIMIT %(limit)s
         """
     elif re.search(r"\b(total|sum|how many hours?|how much time|aggregate)\b", q_lower):
@@ -244,7 +244,7 @@ def query_ttt(
               AND billable = TRUE
             {project_filter}
             {user_filter}
-            ORDER BY entry_date DESC, start_time DESC NULLS LAST, created_at DESC NULLS LAST
+            ORDER BY entry_date DESC, start_time DESC NULLS LAST
             LIMIT %(limit)s
         """
     else:
@@ -257,7 +257,7 @@ def query_ttt(
             WHERE entry_date BETWEEN %(start)s AND %(end)s
             {project_filter}
             {user_filter}
-            ORDER BY entry_date DESC, start_time DESC NULLS LAST, created_at DESC NULLS LAST
+            ORDER BY entry_date DESC, start_time DESC NULLS LAST
             LIMIT %(limit)s
         """
 

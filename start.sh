@@ -36,9 +36,11 @@ docker-compose up -d >> "$LOGS/docker.log" 2>&1 &
 # 2. Backend (FastAPI)
 echo "  → FastAPI backend (port 8000)"
 source "$VENV"
+cd "$ROOT/backend"
 nohup uvicorn api:app --host 0.0.0.0 --port 8000 \
   >> "$LOGS/backend.log" 2>&1 &
 echo $! > "$PIDS/backend.pid"
+cd "$ROOT"
 
 # 3. Frontend (Vite)
 echo "  → Vite frontend (port 5173)"
