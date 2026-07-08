@@ -1,0 +1,67 @@
+# openshift/sync-cronjob.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily CronJob: syncs in-cluster Postgres → Supabase Postgres.
+# Runs at 02:00 UTC every night using the same backend image.
+#
+# Syncs:
+#   - time_entries     (full upsert)
+#   - documents_meta   (text + metadata only, no embedding vectors)
+#   - chat_feedback    (full upsert)
+#
+# Apply (once):
+#   oc apply -f openshift/sync-cronjob.yaml
+#
+# Trigger manually to test:
+#   oc create job supabase-sync-manual --from=cronjob/worktrace-supabase-sync
+#   oc logs -f job/supabase-sync-manual
+#
+# Check scheduled runs:
+#   oc get cronjob worktrace-supabase-sync
+#   oc get jobs -l app=worktrace-supabase-sync
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: worktrace-supabase-sync
+  labels:
+    app: worktrace-supabase-sync
+spec:
+  schedule: "0 2 * * *"          # 02:00 UTC every night
+  concurrencyPolicy: Forbid       # never overlap two syncs
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: worktrace-supabase-sync
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: quay.io/akshaymallibm/knowledgebase-backend:latest
+              imagePullPolicy: Always
+              command:
+                - python
+                - -m
+                - kb.sync_supabase
+              envFrom:
+                - secretRef:
+                    name: knowledgebase-secrets
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop:
+                    - ALL

@@ -42,6 +42,7 @@ REQUIRED=(
   SUPABASE_URL SUPABASE_JWT_SECRET
   EMBED_PROVIDER NOMIC_API_KEY NOMIC_EMBED_MODEL EMBED_DIMENSIONS
   LLM_PROVIDER RAG_TOP_K POSTGRES_PASSWORD
+  SUPABASE_PG_URL
 )
 MISSING=()
 for VAR in "${REQUIRED[@]}"; do
@@ -177,6 +178,7 @@ oc create secret generic knowledgebase-secrets \
   --from-literal=TTT_PGSSL="$TTT_PGSSL" \
   --from-literal=SUPABASE_URL="$SUPABASE_URL" \
   --from-literal=SUPABASE_JWT_SECRET="$SUPABASE_JWT_SECRET" \
+  --from-literal=SUPABASE_PG_URL="$SUPABASE_PG_URL" \
   --from-literal=EMBED_PROVIDER="$EMBED_PROVIDER" \
   --from-literal=NOMIC_API_KEY="$NOMIC_API_KEY" \
   --from-literal=NOMIC_EMBED_MODEL="$NOMIC_EMBED_MODEL" \
@@ -193,6 +195,7 @@ echo ""
 echo "▶ [5/5] Deploying to OpenShift"
 oc apply -f "$SCRIPT_DIR/backend.yaml"
 oc apply -f "$SCRIPT_DIR/frontend.yaml"
+oc apply -f "$SCRIPT_DIR/sync-cronjob.yaml"
 
 # Force pods to pull the freshly pushed images
 oc rollout restart deployment/knowledgebase-backend
