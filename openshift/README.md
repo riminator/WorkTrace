@@ -1,31 +1,48 @@
 # OpenShift Deployment
 
-Everything in this folder is self-contained. The rest of the repo (Render config, local
-docker-compose, `.env` files) is untouched.
+Everything needed to run WorkTrace on OpenShift is in this folder.
 
 ## Folder contents
 
 ```
 openshift/
+├── deploy.sh             # One-command deploy (build, push, secrets, apply, wait)
+├── dump.sh               # Dump in-cluster DB before cluster expiry
+├── deploy.env.example    # Secrets template — copy to deploy.env
+├── QUICKSTART.md         # Step-by-step guide
 ├── Dockerfile.backend    # FastAPI image (built from ./backend)
-├── Dockerfile.frontend   # Vite build → nginx image (built from ./frontend)
+├── Dockerfile.frontend   # Vite build → nginx image (built from repo root)
 ├── nginx.conf            # nginx SPA config — port 8080, proxies /api/* to backend
-├── secret.yaml           # OpenShift Secret template (fill in before applying)
+├── postgres.yaml         # pgvector StatefulSet + Ceph RBD PVC
 ├── backend.yaml          # Deployment + ClusterIP Service for the API
 ├── frontend.yaml         # Deployment + ClusterIP Service + Route for the UI
+├── backup-cronjob.yaml   # Daily pg_dump CronJob — keeps 7 backups on a PVC
+├── sync-cronjob.yaml     # Daily Supabase sync CronJob — mirrors data off-cluster
+├── secret.yaml           # Secret template (reference only — do not commit with values)
 └── README.md             # This file
 ```
 
 ## How it works
 
 ```
-Browser → OpenShift Route (HTTPS)
-        → frontend pod (nginx :8080)
-          → serves static Vite build
-          → proxies /api/* → backend Service (ClusterIP :8000)
-                           → FastAPI pod
-                             → Supabase (auth + Postgres, external)
-                             → Nomic / watsonx (external)
+Browser (Vercel or OCP Route)
+  → React SPA
+    → /api/* proxied by nginx  (OCP mode)
+      OR
+    → https://knowledgebase-ttt.onrender.com  (Vercel mode)
+
+OCP cluster:
+  Route (HTTPS)
+    → frontend pod (nginx :8080)
+      → serves static Vite build
+      → proxies /api/* → backend Service (ClusterIP :8000)
+                       → FastAPI pod
+                         → in-cluster pgvector (Ceph RBD PVC)
+                         → Supabase (auth only, external)
+                         → Nomic / watsonx (external)
+
+Nightly CronJob (02:00 UTC):
+  in-cluster Postgres → sync_supabase.py → Supabase Postgres
 ```
 
 The backend is never publicly exposed — only the frontend Route is. All API traffic goes
@@ -155,7 +172,9 @@ oc patch secret knowledgebase-secrets \
 
 ---
 
-## Render hosting is unaffected
+## Render + Vercel
 
-The files in this folder have no effect on Render. The existing `render.yaml` and `backend/`
-source files are unchanged. Both deployment targets can coexist.
+The files in this folder have no effect on Render or Vercel. Both deployment targets coexist:
+
+- **Render** runs the backend (`https://knowledgebase-ttt.onrender.com`) and uses the same Docker image
+- **Vercel** deploys the frontend from `frontend/` — set `VITE_API_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard

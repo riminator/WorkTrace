@@ -1,6 +1,6 @@
 # WorkTrace
 
-A document and meeting intelligence platform. Upload any file, ask questions in natural language, and automatically log meeting summaries to a time tracker — all running on OpenShift with in-cluster PostgreSQL + pgvector.
+A document and meeting intelligence platform. Upload any file, ask questions in natural language, and automatically log meeting summaries to a time tracker — running on OpenShift with in-cluster PostgreSQL + pgvector, with a Vercel frontend and daily Supabase backup sync.
 
 ## Features
 
@@ -16,8 +16,10 @@ A document and meeting intelligence platform. Upload any file, ask questions in 
 | **Time Task Tracker** | Meeting summaries auto-pushed to `time_entries` — dashboard, reports, CSV export |
 | **Multi-user isolation** | Every document and entry scoped to the authenticated Supabase user |
 | **Pluggable LLM** | watsonx · OpenAI · Groq · Ollama — switch via one env var |
-| **OpenShift deployment** | One script deploys everything — postgres, backend, frontend, secrets |
+| **OpenShift deployment** | One script deploys everything — postgres, backend, frontend, secrets, sync cronjob |
 | **Cluster migration** | `dump.sh` + `deploy.sh` auto-restore — move to a new cluster in minutes |
+| **Daily Supabase sync** | Nightly CronJob mirrors time entries, document metadata, and chat feedback to Supabase Postgres — data survives cluster expiry |
+| **Vercel frontend** | Frontend deployable to Vercel — points to Render backend for a fully cluster-independent setup |
 
 ---
 
@@ -43,6 +45,7 @@ WorkTrace/
 │   │   ├── lc_agent.py       LangChain AgentExecutor — drop-in for agentic pipeline
 │   │   ├── pusher.py         TTT push — write meeting entries to time_entries
 │   │   ├── search.py         Cosine search + list/delete sources
+│   │   ├── sync_supabase.py  Daily sync script — OCP Postgres → Supabase Postgres
 │   │   └── ttt.py            TTT query layer for RAG context
 │   └── requirements.txt
 ├── frontend/                 React + Vite SPA
@@ -71,6 +74,8 @@ WorkTrace/
 │   ├── postgres.yaml         pgvector StatefulSet + Ceph RBD PVC
 │   ├── backend.yaml          FastAPI Deployment + ClusterIP Service
 │   ├── frontend.yaml         nginx Deployment + Service + Route
+│   ├── backup-cronjob.yaml   Daily pg_dump CronJob → keeps 7 local backups on a PVC
+│   ├── sync-cronjob.yaml     Daily sync CronJob → mirrors data to Supabase Postgres
 │   ├── secret.yaml           Secret template (reference only)
 │   ├── Dockerfile.backend    Backend image
 │   ├── Dockerfile.frontend   Frontend image (Vite build → nginx)
@@ -85,14 +90,40 @@ WorkTrace/
 
 ---
 
-## OpenShift deploy (production)
+## Deployments
+
+WorkTrace runs in two complementary deployment modes:
+
+| Layer | Service | Notes |
+|---|---|---|
+| **Frontend** | Vercel | Deployed from `frontend/` — set env vars in Vercel dashboard |
+| **Backend API** | Render | `https://knowledgebase-ttt.onrender.com` — always-on, free tier |
+| **Vector DB** | OCP in-cluster pgvector | Ceph RBD PVC — primary store for documents + embeddings |
+| **Backup DB** | Supabase Postgres | Nightly sync of time entries, document metadata, chat feedback |
+| **Auth** | Supabase | Magic link · Google OAuth · GitHub OAuth |
+
+### Vercel frontend setup
+
+Set these three environment variables in the **Vercel dashboard** (Settings → Environment Variables):
+
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | `https://knowledgebase-ttt.onrender.com` |
+| `VITE_SUPABASE_URL` | `https://iauelxumvcwsndypnmhb.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | *(anon key from Supabase dashboard)* |
+
+Then in **Supabase → Authentication → URL Configuration**:
+- **Site URL** → your Vercel app URL
+- **Redirect URLs** → `https://your-app.vercel.app/**`
+
+### OpenShift deploy
 
 See [`openshift/QUICKSTART.md`](openshift/QUICKSTART.md) for the full guide.
 
 **First time:**
 ```bash
 cp openshift/deploy.env.example openshift/deploy.env
-# Fill in: OC_SERVER, OC_TOKEN, Supabase keys, POSTGRES_PASSWORD, watsonx/Groq keys
+# Fill in: OC_SERVER, OC_TOKEN, Supabase keys, POSTGRES_PASSWORD, SUPABASE_PG_URL, watsonx/Groq keys
 oc adm policy add-scc-to-user anyuid -z postgres-sa -n knowledgebase
 ./openshift/deploy.sh
 ```
@@ -110,6 +141,20 @@ OC_TOKEN=sha256~new-token
 ./openshift/deploy.sh
 ```
 
+### Daily Supabase sync
+
+A CronJob (`sync-cronjob.yaml`) runs at **02:00 UTC** every night. It mirrors three tables from in-cluster Postgres to Supabase:
+
+- `time_entries` — full upsert on `id`
+- `documents_meta` — text + metadata only (no embedding vectors; works on Supabase free plan)
+- `chat_feedback` — full upsert on `id`
+
+To trigger manually:
+```bash
+oc create job supabase-sync-manual --from=cronjob/worktrace-supabase-sync
+oc logs -f job/supabase-sync-manual
+```
+
 ---
 
 ## Local development
@@ -120,13 +165,13 @@ docker compose up -d
 
 # 2. Backend
 cd backend
-cp .env.example .env   # fill in values
+cp ../.env.example .env   # fill in values
 pip install -e .
 uvicorn api:app --reload --port 8000
 
 # 3. Frontend
 cd frontend
-cp .env.example .env.local   # set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+cp .env.example .env.local   # set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY + VITE_API_URL
 npm install
 npm run dev
 ```
@@ -139,15 +184,25 @@ npm run dev
 ## Architecture
 
 ```
-Browser → OpenShift Route (HTTPS)
-        → frontend pod (nginx :8080)
-          → serves Vite build
-          → proxies /api/* → backend ClusterIP :8000
-                           → FastAPI pod
-                             → in-cluster pgvector (Ceph RBD PVC)
-                             → Supabase (auth only)
-                             → Nomic (embeddings)
-                             → watsonx / Groq (LLM)
+Browser (Vercel)
+  → React SPA
+    → VITE_API_URL = https://knowledgebase-ttt.onrender.com  (Render backend)
+                   OR
+    → VITE_API_URL = /api  (OCP nginx proxy → in-cluster backend)
+
+OCP cluster:
+  Route (HTTPS)
+    → frontend pod (nginx :8080)
+      → serves Vite build
+      → proxies /api/* → backend ClusterIP :8000
+                       → FastAPI pod
+                         → in-cluster pgvector (Ceph RBD PVC)
+                         → Supabase (auth only)
+                         → Nomic (embeddings)
+                         → watsonx / Groq (LLM)
+
+Nightly CronJob (02:00 UTC):
+  OCP Postgres → sync_supabase.py → Supabase Postgres
 ```
 
 ### Ingest pipeline
@@ -195,20 +250,12 @@ WorkTrace ships with an optional LangChain pipeline that can replace the custom 
 
 Set `USE_LANGCHAIN=true` in `deploy.env` (or `.env` locally) to activate it:
 
-```bash
-# deploy.env
-USE_LANGCHAIN=true   # use LangChain LCEL + AgentExecutor
-# USE_LANGCHAIN=false  # (default) use custom hand-rolled pipeline
-```
-
 | Mode | `USE_LANGCHAIN=false` (default) | `USE_LANGCHAIN=true` |
 |---|---|---|
 | RAG chat | Hand-rolled prompt + `WatsonxProvider.chat()` | LCEL pipe: `ChatPromptTemplate \| ChatWatsonx \| StrOutputParser` |
 | Agentic meeting | Fixed 5-step sequence (always runs all steps) | `AgentExecutor` — LLM dynamically decides which tools to call and how many times |
 | Retrieval | Same `search()` + `query_ttt()` calls | Same (unchanged) |
 | Embeddings | Direct Nomic/Ollama HTTP calls | Same calls wrapped in `LCNomicEmbeddings` / `LCOllamaEmbeddings` |
-
-New files added: [`backend/kb/lc_embedder.py`](backend/kb/lc_embedder.py) · [`backend/kb/lc_llm.py`](backend/kb/lc_llm.py) · [`backend/kb/lc_chat.py`](backend/kb/lc_chat.py) · [`backend/kb/lc_agent.py`](backend/kb/lc_agent.py)
 
 ---
 

@@ -1,6 +1,6 @@
 # WorkTrace — General Overview
 
-WorkTrace is a document and meeting intelligence platform. Upload any file, ask questions in natural language, and automatically log meeting summaries to a built-in time tracker — all behind per-user authentication, running on OpenShift with in-cluster PostgreSQL + pgvector.
+WorkTrace is a document and meeting intelligence platform. Upload any file, ask questions in natural language, and automatically log meeting summaries to a built-in time tracker — all behind per-user authentication. The primary deployment runs on OpenShift with in-cluster PostgreSQL + pgvector, with the frontend also available on Vercel and data durably backed up to Supabase Postgres nightly.
 
 ---
 
@@ -69,8 +69,10 @@ WorkTrace is a document and meeting intelligence platform. Upload any file, ask 
 | **Time Task Tracker (TTT)** | Meeting summaries auto-pushed to `time_entries`; dashboard, manual entry, reports, CSV export, calendar import |
 | **Multi-user isolation** | Every document and time entry is scoped to the authenticated Supabase user |
 | **Pluggable LLM** | watsonx · OpenAI · Groq · Ollama — switch via one environment variable |
-| **OpenShift deployment** | One script deploys everything — postgres, backend, frontend, secrets |
+| **OpenShift deployment** | One script deploys everything — postgres, backend, frontend, secrets, sync cronjob |
 | **Cluster migration** | `dump.sh` + `deploy.sh` auto-restore from backup when moving to a new cluster |
+| **Daily Supabase sync** | Nightly CronJob mirrors time entries, document metadata, and chat feedback to Supabase Postgres — data survives cluster expiry |
+| **Vercel frontend** | Frontend deployable to Vercel pointing at the Render backend — fully cluster-independent |
 
 ---
 
@@ -201,12 +203,12 @@ npm run dev
 
 ### OpenShift (production)
 
-WorkTrace runs on OpenShift with an in-cluster pgvector database backed by a Ceph RBD persistent volume. A single `deploy.sh` script handles image builds, secret injection, and pod deployment.
+WorkTrace runs on OpenShift with an in-cluster pgvector database backed by a Ceph RBD persistent volume. A single `deploy.sh` script handles image builds, secret injection, pod deployment, and cronjob setup.
 
 **First time:**
 ```bash
 cp openshift/deploy.env.example openshift/deploy.env
-# Fill in: OC_SERVER, OC_TOKEN, Supabase keys, POSTGRES_PASSWORD, watsonx/Groq keys
+# Fill in: OC_SERVER, OC_TOKEN, Supabase keys, POSTGRES_PASSWORD, SUPABASE_PG_URL, watsonx/Groq keys
 ./openshift/deploy.sh
 ```
 
@@ -224,6 +226,23 @@ cp openshift/deploy.env.example openshift/deploy.env
 After each deploy, update the **Supabase → Authentication → URL Configuration** with the new Route URL so login redirects work.
 
 See [`openshift/QUICKSTART.md`](openshift/QUICKSTART.md) for the full step-by-step guide.
+
+### Vercel frontend
+
+The frontend can be deployed independently to Vercel, pointing at the Render backend (`https://knowledgebase-ttt.onrender.com`). Set `VITE_API_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard, and add the Vercel URL to Supabase's allowed redirect URLs.
+
+### Daily Supabase sync
+
+A CronJob runs at **02:00 UTC** every night, mirroring three tables from in-cluster Postgres to Supabase Postgres:
+- `time_entries` — full upsert
+- `documents_meta` — text + metadata only (no embedding vectors)
+- `chat_feedback` — full upsert
+
+This ensures data survives cluster expiry. To trigger manually:
+```bash
+oc create job supabase-sync-manual --from=cronjob/worktrace-supabase-sync
+oc logs -f job/supabase-sync-manual
+```
 
 ---
 
@@ -260,12 +279,14 @@ See [`Technical.md`](Technical.md) for implementation details.
 
 | Layer | Role |
 |---|---|
-| **Frontend** | User interaction, login/logout, KB tabs (Chat, Search, Upload, Meeting, Sources, Feedback), TTT tabs — [`frontend/src/App.jsx`](frontend/src/App.jsx) |
-| **Backend API** | Request handling, JWT auth, orchestration — [`backend/api.py`](backend/api.py) + [`backend/ttt_api.py`](backend/ttt_api.py) |
+| **Frontend (Vercel / OCP)** | User interaction, login/logout, KB tabs (Chat, Search, Upload, Meeting, Sources, Feedback), TTT tabs — [`frontend/src/App.jsx`](frontend/src/App.jsx) |
+| **Backend API (Render / OCP)** | Request handling, JWT auth, orchestration — [`backend/api.py`](backend/api.py) + [`backend/ttt_api.py`](backend/ttt_api.py) |
 | **Knowledge engine** | Extraction, embedding, retrieval, chat — [`backend/kb/`](backend/kb/) (+ LangChain equivalents in `lc_*.py`) |
 | **Auth layer** | Supabase JWT validation (ES256 + HS256) — [`backend/kb/auth.py`](backend/kb/auth.py) |
-| **Vector store** | Chunks, metadata, embeddings in PostgreSQL + pgvector |
-| **TTT store** | Time entries in a separate PostgreSQL database (Neon or in-cluster) |
+| **Vector store** | Chunks, metadata, embeddings in in-cluster PostgreSQL + pgvector (primary) |
+| **Backup store** | Supabase Postgres — time entries, document metadata, chat feedback synced nightly |
+| **TTT store** | Time entries in the in-cluster PostgreSQL database |
 | **LLM layer** | Configurable answer generation — [`backend/kb/llm.py`](backend/kb/llm.py) |
+| **Sync layer** | [`backend/kb/sync_supabase.py`](backend/kb/sync_supabase.py) — daily OCP → Supabase mirror |
 
 For implementation details, see [`Technical.md`](Technical.md).

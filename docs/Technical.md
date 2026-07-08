@@ -42,20 +42,30 @@ A component-by-component breakdown of how WorkTrace works under the hood.
 ### OpenShift (production)
 
 ```
-Browser → OpenShift Route (HTTPS)
-        → frontend pod (nginx :8080)
-          → serves static Vite build
-          → proxies /api/* → backend ClusterIP :8000
-                           → FastAPI pod
-                             → in-cluster pgvector (Ceph RBD PVC, port 5432)
-                             → Supabase (auth only, external)
-                             → Nomic Atlas (embeddings, external)
-                             → watsonx / Groq (LLM, external)
+Browser (Vercel or OCP Route)
+  → React SPA
+    → VITE_API_URL = https://knowledgebase-ttt.onrender.com  (Render)
+                   OR
+    → VITE_API_URL = /api  (OCP nginx proxy → in-cluster backend)
+
+OCP cluster:
+  Route (HTTPS)
+    → frontend pod (nginx :8080)
+      → serves static Vite build
+      → proxies /api/* → backend ClusterIP :8000
+                       → FastAPI pod
+                         → in-cluster pgvector (Ceph RBD PVC, port 5432)
+                         → Supabase (auth only, external)
+                         → Nomic Atlas (embeddings, external)
+                         → watsonx / Groq (LLM, external)
+
+Nightly CronJob (02:00 UTC):
+  in-cluster Postgres → sync_supabase.py → Supabase Postgres
 ```
 
-The backend is never publicly exposed — only the frontend Route is. All API calls go through nginx inside the cluster. `VITE_API_URL=/api` is baked into the frontend image at build time so every fetch goes to the relative `/api` path, which nginx proxies to the backend ClusterIP service.
+The backend is never publicly exposed — only the frontend Route is. All API calls go through nginx inside the cluster. `VITE_API_URL=/api` is baked into the OCP frontend image at build time; the Vercel build uses `VITE_API_URL=https://knowledgebase-ttt.onrender.com`.
 
-The separate TTT database (`TTT_DATABASE_URL`) is either the same Supabase/Neon project or a separate one. The main vector database is in-cluster pgvector.
+Both `DATABASE_URL` and `TTT_DATABASE_URL` point to the same in-cluster pgvector database.
 
 ---
 
@@ -136,8 +146,9 @@ Every other module imports constants directly from `config.py`. Nothing reads `o
 
 | Variable | Description |
 |---|---|
-| `DATABASE_URL` | pgvector PostgreSQL connection string |
-| `TTT_DATABASE_URL` | Separate TTT PostgreSQL connection string |
+| `DATABASE_URL` | In-cluster pgvector PostgreSQL connection string |
+| `TTT_DATABASE_URL` | TTT PostgreSQL connection string (same DB as `DATABASE_URL` in OCP) |
+| `SUPABASE_PG_URL` | Supabase Postgres connection string — destination for the nightly sync |
 | `SUPABASE_URL` | Supabase project URL (used to fetch JWKS) |
 | `SUPABASE_JWT_SECRET` | Static JWT secret (HS256 fallback) |
 | `EMBED_PROVIDER` | `nomic` or `ollama` |
@@ -751,12 +762,14 @@ Files: [`openshift/`](openshift/)
 
 | File | Purpose |
 |---|---|
-| `deploy.sh` | One-command deploy: build multi-arch images (amd64 + arm64), push to registry, log into cluster, apply secrets, deploy pods, wait for `Running`, print URL |
-| `dump.sh` | Dump both databases to `openshift/backup.sql` before cluster expiry |
+| `deploy.sh` | One-command deploy: build multi-arch images (amd64 + arm64), push to registry, log into cluster, apply secrets, deploy pods + cronjobs, wait for `Running`, print URL |
+| `dump.sh` | Dump the in-cluster database to a local `kb_backup_*.sql` file before cluster expiry |
 | `deploy.env.example` | Template — copy to `deploy.env` and fill in secrets |
 | `postgres.yaml` | pgvector `StatefulSet` + Ceph RBD `PersistentVolumeClaim` |
 | `backend.yaml` | FastAPI `Deployment` + `ClusterIP Service` |
 | `frontend.yaml` | nginx `Deployment` + `Service` + OpenShift `Route` (HTTPS) |
+| `backup-cronjob.yaml` | Daily `pg_dump` CronJob at 23:55 UTC — keeps last 7 dumps on a dedicated PVC |
+| `sync-cronjob.yaml` | Daily Supabase sync CronJob at 02:00 UTC — mirrors data to Supabase Postgres |
 | `secret.yaml` | Secret template (reference only — do not commit with values) |
 | `Dockerfile.backend` | FastAPI image (built from `./backend`) |
 | `Dockerfile.frontend` | Vite build → nginx image; `VITE_API_URL=/api` baked in |
@@ -765,18 +778,32 @@ Files: [`openshift/`](openshift/)
 ### Cluster migration workflow
 
 ```bash
-# Before expiry — dump both DBs
-./openshift/dump.sh      # writes openshift/backup.sql
+# Before expiry — dump the DB locally
+./openshift/dump.sh      # writes kb_backup_<timestamp>.sql in repo root
 
 # Update credentials in deploy.env
 OC_SERVER=https://api.new-cluster.com:6443
 OC_TOKEN=sha256~new-token
 
-# Deploy to new cluster — backup.sql is auto-restored
+# Deploy to new cluster — latest kb_backup_*.sql is auto-restored
 ./openshift/deploy.sh
 ```
 
-`deploy.sh` detects `openshift/backup.sql` and runs `psql` restore inside the new postgres pod before the backend starts.
+`deploy.sh` detects the latest `kb_backup_*.sql` in the repo root and runs `psql` restore inside the new postgres pod before the backend starts.
+
+### Daily Supabase sync
+
+[`sync-cronjob.yaml`](sync-cronjob.yaml) runs [`backend/kb/sync_supabase.py`](../backend/kb/sync_supabase.py) at **02:00 UTC** every night using the existing backend image. It upserts three tables into Supabase Postgres (`SUPABASE_PG_URL`):
+
+- `time_entries` — full row upsert on primary key `id`
+- `documents_meta` — source, file type, content, metadata — **no embedding vector** (works on Supabase free plan)
+- `chat_feedback` — full row upsert on primary key `id`
+
+Trigger manually:
+```bash
+oc create job supabase-sync-manual --from=cronjob/worktrace-supabase-sync
+oc logs -f job/supabase-sync-manual
+```
 
 ### Post-deploy step
 
@@ -785,6 +812,18 @@ After each new cluster deploy, update **Supabase → Authentication → URL Conf
 - **Redirect URLs** → `https://<route-host>/**`
 
 Without this, login redirects will fail.
+
+### Vercel frontend
+
+The frontend is also deployed to Vercel, where it uses the Render backend instead of the OCP cluster. Set in the Vercel dashboard (Settings → Environment Variables):
+
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | `https://knowledgebase-ttt.onrender.com` |
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key |
+
+Add the Vercel URL to **Supabase → Authentication → URL Configuration → Redirect URLs**.
 
 ---
 
@@ -795,11 +834,12 @@ Without this, login redirects will fail.
 | Path | Description |
 |---|---|
 | `.env` | Primary local config |
-| `.env.example` | Template for `.env` |
-| `openshift/deploy.env` | OpenShift secrets (gitignored) |
+| `.env.example` | Template for `.env` — includes `SUPABASE_PG_URL` |
+| `openshift/deploy.env` | OpenShift secrets (gitignored) — escape `$` in passwords as `\$` |
 | `openshift/deploy.env.example` | Template for `deploy.env` |
 | `recorder/.env` | Recorder settings — `KB_INGEST_URL`, `WHISPER_MODEL`, `AUDIO_DEVICE`, `RECORDINGS_DIR` |
 | `frontend/.env.local` | Vite env — `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
+| `frontend/.env.production` | Vite production env — used by Vercel build; same three vars pointing at Render |
 
 ### Core library — `backend/kb/`
 
@@ -819,6 +859,7 @@ Without this, login redirects will fail.
 | `lc_chat.py` | LCEL RAG chain — drop-in for `chat.py` when `USE_LANGCHAIN=true` |
 | `lc_agent.py` | LangChain `AgentExecutor` — drop-in for the fixed 5-step agentic pipeline |
 | `pusher.py` | Writes meeting summaries to `time_entries` via direct psycopg2 |
+| `sync_supabase.py` | Daily sync — reads from in-cluster Postgres, upserts `time_entries`, `documents_meta`, `chat_feedback` into Supabase Postgres; skips embedding vectors |
 | `ttt.py` | Reads TTT rows for RAG context injection |
 | `cli.py` | Click CLI: `kb init` · `kb ingest <path>` · `kb search <query>` · `kb list` · `kb delete <source>` |
 
@@ -828,6 +869,18 @@ Without this, login redirects will fail.
 |---|---|
 | `backend/api.py` | FastAPI app — KB routes: `/upload`, `/search`, `/sources`, `/chat`, `/ingest-meeting`, `/summarize-meeting`, `/agentic-meeting`, `/feedback`, `/feedback/stats` |
 | `backend/ttt_api.py` | TTT router mounted at `/ttt` — full CRUD, import, export, summary, classify |
+
+### OpenShift manifests
+
+| File | Description |
+|---|---|
+| `openshift/postgres.yaml` | pgvector `StatefulSet` + Ceph RBD PVC |
+| `openshift/backend.yaml` | FastAPI `Deployment` + `ClusterIP Service` |
+| `openshift/frontend.yaml` | nginx `Deployment` + `Service` + `Route` |
+| `openshift/backup-cronjob.yaml` | Daily `pg_dump` at 23:55 UTC — 7-backup rotation on dedicated PVC |
+| `openshift/sync-cronjob.yaml` | Daily Supabase sync at 02:00 UTC — runs `kb.sync_supabase` |
+| `openshift/deploy.sh` | Full deploy script — images, secrets, manifests, auto-restore |
+| `openshift/dump.sh` | Pre-expiry dump script |
 
 ### Frontend
 
