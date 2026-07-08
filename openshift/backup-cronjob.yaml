@@ -1,0 +1,93 @@
+# openshift/backup-cronjob.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily pg_dump CronJob. Runs at 23:55 every night, writes a timestamped SQL
+# file to a dedicated PVC. Keeps the last 7 dumps (older ones are pruned).
+#
+# Apply (once):
+#   oc apply -f openshift/backup-cronjob.yaml
+#
+# Check runs:
+#   oc get cronjob worktrace-db-backup
+#   oc get jobs -l app=worktrace-db-backup
+#
+# Read a backup:
+#   oc exec <backup-pod> -- ls /backups
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── PVC to hold backup files ──────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ocs-storagecluster-ceph-rbd
+  resources:
+    requests:
+      storage: 2Gi
+---
+# ── CronJob ───────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: worktrace-db-backup
+  labels:
+    app: worktrace-db-backup
+spec:
+  schedule: "55 23 * * *"        # 23:55 every night (UTC)
+  concurrencyPolicy: Forbid       # never overlap two dumps
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: worktrace-db-backup
+        spec:
+          serviceAccountName: postgres-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: pgdump
+              image: pgvector/pgvector:pg16
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  OUTFILE="/backups/backup_$(date +%Y%m%d_%H%M%S).sql"
+                  echo "▶ Dumping to $OUTFILE"
+                  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > "$OUTFILE"
+                  echo "  ✓ Done."
+                  # Prune — keep only the 7 most recent files
+                  ls -1t /backups/backup_*.sql | tail -n +8 | xargs -r rm --
+                  echo "  ✓ Old backups pruned (keeping last 7)."
+              env:
+                - name: PGHOST
+                  value: knowledgebase-postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_PASSWORD
+              envFrom:
+                - secretRef:
+                    name: postgres-credentials
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "256Mi"
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgres-backups

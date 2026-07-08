@@ -1,5 +1,5 @@
 Meeting Title: Honda Data Observability PoC – Weekly StandUp
-Date: 2025-06-25
+Date: 2027-06-25
 Time: 10:00 AM – 10:30 AM CST
 Platform: Microsoft Teams
 Organizer: akshay.mallireddy@ibm.com
