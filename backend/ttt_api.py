@@ -136,6 +136,20 @@ _NONBILLABLE_PATTERNS = ["internal", "team", "admin", "training"]
 
 
 def _classify(title: str, organizer: str | None = None) -> dict:
+    """
+    Classify a meeting title into projectCode / taskType / billable / confidence.
+
+    When USE_LLM_CLASSIFY=true the zero-shot LLM classifier in kb/classifier.py
+    is tried first; on any error it falls back to the regex rules below.
+    """
+    from kb.config import USE_LLM_CLASSIFY
+    if USE_LLM_CLASSIFY:
+        from kb.classifier import llm_classify
+        result = llm_classify(title, organizer)
+        if result is not None:
+            return result
+        # fall through to regex on failure
+
     project_code = "GENERAL"
     task_type    = "meeting"
     confidence   = 0.2

@@ -63,6 +63,11 @@ TTT_PGSSL: bool = os.getenv("TTT_PGSSL", "true").lower() == "true"
 # The custom (non-LC) implementation is always kept as a fallback.
 USE_LANGCHAIN: bool = os.getenv("USE_LANGCHAIN", "false").lower() == "true"
 
+# ── ML classifier toggle ──────────────────────────────────────────────────────
+# Set USE_LLM_CLASSIFY=true to use a zero-shot LLM call for meeting classification
+# instead of the built-in regex rules. Falls back to regex on any parse error.
+USE_LLM_CLASSIFY: bool = os.getenv("USE_LLM_CLASSIFY", "false").lower() == "true"
+
 # ── Supabase Auth ─────────────────────────────────────────────────────────────
 # Both found in Supabase dashboard → Project Settings → API
 SUPABASE_URL: str        = os.getenv("SUPABASE_URL", "")         # e.g. https://xyz.supabase.co
