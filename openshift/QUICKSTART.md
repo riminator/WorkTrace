@@ -26,6 +26,7 @@ Open `openshift/deploy.env` and fill in:
 | `NOMIC_API_KEY` | [atlas.nomic.ai](https://atlas.nomic.ai) → API keys |
 | `WATSONX_API_KEY` | IBM Cloud → watsonx.ai → Manage → API key |
 | `WATSONX_PROJECT_ID` | watsonx.ai → project → Manage → General |
+| `USE_LLM_CLASSIFY` | `true` to use zero-shot LLM meeting classifier; `false` (default) uses regex rules |
 
 `deploy.env` is gitignored — it will never be committed.
 
@@ -125,4 +126,10 @@ oc logs -f job/db-backup-manual
 oc patch secret knowledgebase-secrets \
   --type merge \
   -p '{"stringData":{"WATSONX_API_KEY":"new-value"}}'
+
+# Enable the LLM meeting classifier without a full redeploy
+oc patch secret knowledgebase-secrets \
+  --type merge \
+  -p '{"stringData":{"USE_LLM_CLASSIFY":"true"}}'
+oc rollout restart deployment/knowledgebase-backend
 ```

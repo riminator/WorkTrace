@@ -64,6 +64,7 @@ WorkTrace is a document and meeting intelligence platform. Upload any file, ask 
 | **RAG chat** | Multi-turn conversational Q&A grounded in your indexed documents |
 | **Agentic meeting summariser** | 5-step agent loop (search KB → look up TTT history → classify → synthesise → push); full tool-call trace displayed in the UI |
 | **LangChain pipeline** | Optional drop-in for RAG chat and agentic summarisation — activate with `USE_LANGCHAIN=true`; custom implementation always kept as fallback |
+| **ML meeting classifier** | Zero-shot LLM classifier assigns `projectCode`, `taskType`, and `billable` from meeting titles — activate with `USE_LLM_CLASSIFY=true`; regex rules kept as silent fallback |
 | **Chat feedback loop** | Thumbs up/down on every assistant message; approval score + low-rated query log in the Feedback tab |
 | **Meeting intelligence** | Ingest transcripts, auto-extract metadata, generate structured summaries |
 | **Time Task Tracker (TTT)** | Meeting summaries auto-pushed to `time_entries`; dashboard, manual entry, reports, CSV export, calendar import |
@@ -123,7 +124,7 @@ Runs a multi-step agent pipeline that produces a richer summary by combining doc
 |---|---|---|
 | 1 | `search_kb` | Retrieves the most relevant transcript chunks from pgvector |
 | 2 | `lookup_ttt` | Fetches past TTT entries for the same project for historical context |
-| 3 | `classify` | Infers project code, task type, and billable flag from the filename and organizer |
+| 3 | `classify` | Infers project code, task type, and billable flag — via LLM when `USE_LLM_CLASSIFY=true`, regex otherwise |
 | 4 | `synthesise` | Calls the LLM with all gathered context (chunks + history) |
 | 5 | `push_ttt` | Inserts the completed time entry into the Time Task Tracker |
 
@@ -161,7 +162,7 @@ The TTT module is a full time-tracking system built into the platform. It stores
 | **Calendar import** | Upload an ICS calendar file to import events as time entries |
 | **Reports** | Date-range summary reports broken down by project and task type |
 | **CSV export** | Download all entries for a date range as a CSV file |
-| **AI classification** | `/ttt/classify` endpoint infers project code and billable flag from a meeting title |
+| **AI classification** | `/ttt/classify` endpoint infers project code, task type, and billable flag — zero-shot LLM when `USE_LLM_CLASSIFY=true`, regex rules otherwise |
 | **Chat feedback** | Rate any chat response 👍/👎; the Feedback tab shows approval score, trend, and a drill-down of low-rated queries |
 
 ### 6. Authentication and multi-user isolation
@@ -282,6 +283,7 @@ See [`Technical.md`](Technical.md) for implementation details.
 | **Frontend (Vercel / OCP)** | User interaction, login/logout, KB tabs (Chat, Search, Upload, Meeting, Sources, Feedback), TTT tabs — [`frontend/src/App.jsx`](frontend/src/App.jsx) |
 | **Backend API (Render / OCP)** | Request handling, JWT auth, orchestration — [`backend/api.py`](backend/api.py) + [`backend/ttt_api.py`](backend/ttt_api.py) |
 | **Knowledge engine** | Extraction, embedding, retrieval, chat — [`backend/kb/`](backend/kb/) (+ LangChain equivalents in `lc_*.py`) |
+| **ML classifier** | Zero-shot meeting classification — [`backend/kb/classifier.py`](backend/kb/classifier.py) (active when `USE_LLM_CLASSIFY=true`) |
 | **Auth layer** | Supabase JWT validation (ES256 + HS256) — [`backend/kb/auth.py`](backend/kb/auth.py) |
 | **Vector store** | Chunks, metadata, embeddings in in-cluster PostgreSQL + pgvector (primary) |
 | **Backup store** | Supabase Postgres — time entries, document metadata, chat feedback synced nightly |

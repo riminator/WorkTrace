@@ -167,6 +167,7 @@ Every other module imports constants directly from `config.py`. Nothing reads `o
 | `WATSONX_URL` | watsonx.ai inference URL |
 | `RAG_TOP_K` | Default number of chunks retrieved per search |
 | `USE_LANGCHAIN` | `true` to route RAG + agentic calls through LangChain; `false` (default) uses custom pipeline |
+| `USE_LLM_CLASSIFY` | `true` to use zero-shot LLM for meeting classification (`/ttt/classify` + agentic pipeline step 3); `false` (default) uses regex rules |
 
 ### Environment variable precedence (OpenShift)
 
@@ -675,9 +676,21 @@ Parses `VEVENT` blocks. `DTSTART`/`DTEND` provide start time, end time, and date
 
 ### AI classification (`/ttt/classify`)
 
-`_classify(title, organizer)` applies regex patterns to infer:
-- **Project code** — keyword patterns extracted from common project name formats
-- **Billable** — matched against lists of billable keywords (`client`, `customer`, `consulting`) and non-billable keywords (`internal`, `team`, `admin`, `training`)
+`_classify(title, organizer)` infers three fields from a meeting title. The implementation depends on `USE_LLM_CLASSIFY`:
+
+**`USE_LLM_CLASSIFY=false` (default) — regex rules:**
+- **Project code** — 4 keyword patterns (`Project <X>`, `Sprint Planning/Review/Retro`, `Daily Standup`, `1:1`)
+- **Task type** — fixed map from pattern match (standup, ceremony, one-on-one, meeting)
+- **Billable** — keyword lists (`client`, `customer`, `consulting` → true; `internal`, `team`, `admin`, `training` → false)
+- **Confidence** — hard-coded (0.2–0.85)
+
+**`USE_LLM_CLASSIFY=true` — zero-shot LLM (`kb/classifier.py`):**
+- Sends `{title, organizer}` to the configured LLM with a structured JSON-only prompt
+- Returns `projectCode`, `taskType`, `billable`, and a model self-reported `confidence`
+- Falls back to regex silently on any LLM error or JSON parse failure
+- No new dependencies — reuses `kb/llm.py`
+
+See [`backend/kb/classifier_README.md`](../backend/kb/classifier_README.md) for the full prompt and testing guide.
 
 ---
 
@@ -845,7 +858,7 @@ Add the Vercel URL to **Supabase → Authentication → URL Configuration → Re
 
 | File | Description |
 |---|---|
-| `config.py` | Loads `.env`, exports all config constants (incl. `USE_LANGCHAIN`) |
+| `config.py` | Loads `.env`, exports all config constants (incl. `USE_LANGCHAIN`, `USE_LLM_CLASSIFY`) |
 | `auth.py` | Supabase JWT validation — ES256 (JWKS) + HS256 (static secret), returns `user_id` |
 | `db.py` | SQLAlchemy engine, `SessionLocal`, `Document` ORM model, `init_db()` |
 | `embedder.py` | `embed(text) → list[float]` — Nomic or Ollama provider |
@@ -860,6 +873,8 @@ Add the Vercel URL to **Supabase → Authentication → URL Configuration → Re
 | `lc_agent.py` | LangChain `AgentExecutor` — drop-in for the fixed 5-step agentic pipeline |
 | `pusher.py` | Writes meeting summaries to `time_entries` via direct psycopg2 |
 | `sync_supabase.py` | Daily sync — reads from in-cluster Postgres, upserts `time_entries`, `documents_meta`, `chat_feedback` into Supabase Postgres; skips embedding vectors |
+| `classifier.py` | `llm_classify(title, organizer)` — zero-shot LLM meeting classifier; returns `None` on failure so `_classify()` falls back to regex |
+| `classifier_README.md` | Feature docs: prompt, fallback behaviour, enable/disable instructions, test examples |
 | `ttt.py` | Reads TTT rows for RAG context injection |
 | `cli.py` | Click CLI: `kb init` · `kb ingest <path>` · `kb search <query>` · `kb list` · `kb delete <source>` |
 

@@ -12,6 +12,7 @@ A document and meeting intelligence platform. Upload any file, ask questions in 
 | **Meeting intelligence** | Ingest transcripts, auto-extract metadata, generate summaries |
 | **Agentic meeting summariser** | 5-step agent loop: search KB → look up TTT history → classify → synthesise → push; full reasoning trace visible in the UI |
 | **LangChain pipeline** | Optional drop-in replacement for the RAG and agentic pipelines — activate with `USE_LANGCHAIN=true`; custom implementation kept as fallback |
+| **ML meeting classifier** | Zero-shot LLM classifier assigns `projectCode`, `taskType`, and `billable` from any meeting title — activate with `USE_LLM_CLASSIFY=true`; regex rules kept as silent fallback |
 | **Chat feedback loop** | Thumbs up/down on every response; approval score dashboard; low-rated query log for iterative improvement |
 | **Time Task Tracker** | Meeting summaries auto-pushed to `time_entries` — dashboard, reports, CSV export |
 | **Multi-user isolation** | Every document and entry scoped to the authenticated Supabase user |
@@ -33,7 +34,8 @@ WorkTrace/
 │   ├── kb/                   Core library
 │   │   ├── auth.py           Supabase JWT validation (ES256 + HS256)
 │   │   ├── chat.py           RAG pipeline — retrieve → prompt → LLM (routes to LC when USE_LANGCHAIN=true)
-│   │   ├── config.py         All env-var config in one place (incl. USE_LANGCHAIN flag)
+│   │   ├── classifier.py     Zero-shot LLM meeting classifier (activated by USE_LLM_CLASSIFY=true)
+│   │   ├── config.py         All env-var config in one place (incl. USE_LANGCHAIN, USE_LLM_CLASSIFY flags)
 │   │   ├── db.py             SQLAlchemy engine + Document ORM model
 │   │   ├── embedder.py       Nomic / Ollama embedding
 │   │   ├── extractors.py     File parsing + chunking (800 chars, 100 overlap)
@@ -256,6 +258,23 @@ Set `USE_LANGCHAIN=true` in `deploy.env` (or `.env` locally) to activate it:
 | Agentic meeting | Fixed 5-step sequence (always runs all steps) | `AgentExecutor` — LLM dynamically decides which tools to call and how many times |
 | Retrieval | Same `search()` + `query_ttt()` calls | Same (unchanged) |
 | Embeddings | Direct Nomic/Ollama HTTP calls | Same calls wrapped in `LCNomicEmbeddings` / `LCOllamaEmbeddings` |
+
+---
+
+## ML meeting classifier (optional)
+
+WorkTrace includes a zero-shot LLM classifier for meeting entries. When enabled it replaces the built-in regex rules in `_classify()` with a structured LLM call that infers `projectCode`, `taskType`, and `billable` from any meeting title. On any error it falls back to the regex rules silently.
+
+Set `USE_LLM_CLASSIFY=true` in `deploy.env` (or `.env` locally) to activate it:
+
+| Field | Regex (default) | LLM classifier |
+|---|---|---|
+| `projectCode` | Pattern-matched keywords only | Inferred from full title semantics |
+| `taskType` | 4 hard-coded patterns | Full vocabulary: `standup`, `planning`, `review`, `admin`, `learning`, etc. |
+| `billable` | Keyword list (`client`, `customer`, …) | Context-aware inference |
+| `confidence` | Fixed value (0.2–0.85) | Model self-reported (0.0–1.0) |
+
+See [`backend/kb/classifier_README.md`](backend/kb/classifier_README.md) for the full prompt, fallback behaviour, and testing instructions.
 
 ---
 
