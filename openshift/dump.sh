@@ -43,6 +43,23 @@ echo "▶ Dumping database from pod $POD..."
 oc exec "$POD" -- pg_dump -U postgres vector > "$OUTFILE"
 
 echo "  ✓ Saved to: $OUTFILE"
+
+# ── Prune old backups — keep only the new file + the one before it ────────────
+# Sort existing backups oldest-first; delete everything except the last two.
+mapfile -t OLD_BACKUPS < <(ls -t "$REPO_ROOT"/kb_backup_*.sql 2>/dev/null)
+# Index 0 = newest (just written), 1 = previous (keep), 2+ = delete
+if [[ ${#OLD_BACKUPS[@]} -gt 2 ]]; then
+  echo ""
+  echo "▶ Pruning old backups (keeping newest 2)..."
+  for (( i=2; i<${#OLD_BACKUPS[@]}; i++ )); do
+    rm -f "${OLD_BACKUPS[$i]}"
+    echo "  ✗ Deleted: ${OLD_BACKUPS[$i]}"
+  done
+fi
+
+echo ""
+echo "Backups retained:"
+ls -lh "$REPO_ROOT"/kb_backup_*.sql 2>/dev/null | awk '{print "  " $5, $9}'
 echo ""
 echo "To restore on a new cluster after running deploy.sh:"
 echo "  POD=\$(oc get pod -l app=knowledgebase-postgres -o jsonpath='{.items[0].metadata.name}')"
