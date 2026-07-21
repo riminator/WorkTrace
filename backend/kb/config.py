@@ -72,3 +72,9 @@ USE_LLM_CLASSIFY: bool = os.getenv("USE_LLM_CLASSIFY", "false").lower() == "true
 # Both found in Supabase dashboard → Project Settings → API
 SUPABASE_URL: str        = os.getenv("SUPABASE_URL", "")         # e.g. https://xyz.supabase.co
 SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")  # JWT Secret (HS256 fallback)
+
+# ── Admin users ───────────────────────────────────────────────────────────────
+# Comma-separated Supabase user UUIDs that can read ALL users' data.
+# e.g. ADMIN_USER_IDS=uuid-1,uuid-2
+_raw_admin_ids = os.getenv("ADMIN_USER_IDS", "")
+ADMIN_USER_IDS: set[str] = {u.strip() for u in _raw_admin_ids.split(",") if u.strip()}

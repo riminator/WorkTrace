@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, Depen
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from kb.auth import get_current_user
+from kb.auth import UserInfo, get_current_user
 from kb.chat import ChatMessage, ask as kb_ask
 from kb.config import TTT_DATABASE_URL, TTT_PGSSL
 from kb.db import init_db
@@ -167,14 +167,49 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/me", summary="Return the current user's id and role flags")
+def me(current_user: UserInfo = Depends(get_current_user)) -> dict:
+    return {"user_id": current_user.user_id, "is_admin": current_user.is_admin}
+
+
+@app.get("/admin/users", summary="List all distinct users (admin only)")
+def admin_users(current_user: UserInfo = Depends(get_current_user)) -> list[dict]:
+    """
+    Returns every distinct user_id that has at least one time entry or document,
+    together with a display label. Admin-only.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    sslmode = "require" if TTT_PGSSL else "disable"
+    conn = psycopg2.connect(TTT_DATABASE_URL, sslmode=sslmode)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT user_id FROM (
+                    SELECT user_id::text AS user_id FROM time_entries
+                    UNION
+                    SELECT user_id::text AS user_id FROM documents WHERE user_id IS NOT NULL
+                ) AS all_users
+                ORDER BY user_id
+                """
+            )
+            rows = cur.fetchall()
+        return [{"user_id": r[0], "label": r[0]} for r in rows]
+    finally:
+        conn.close()
+
+
 @app.post("/upload", summary="Upload and ingest a file")
 async def upload_file(
     file: Annotated[UploadFile, File(description="Any supported file type")],
     force: Annotated[bool, Form()] = False,
     project_code: Annotated[str | None, Form()] = None,
     doc_type: Annotated[str | None, Form()] = None,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
+    user_id = current_user.user_id
     suffix = pathlib.Path(file.filename or "upload").suffix or ".bin"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
@@ -197,29 +232,41 @@ async def upload_file(
 @app.post("/search", response_model=list[SearchResultOut], summary="Semantic search")
 def search(
     req: SearchRequest,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> list[SearchResultOut]:
+    uid = None if current_user.is_admin else current_user.user_id
     results = kb_search(
         req.query,
         top_k=req.top_k,
         file_type=req.file_type,
         source_filter=req.source_filter,
-        user_id=user_id,
+        user_id=uid,
     )
     return [SearchResultOut(**vars(r)) for r in results]
 
 
 @app.get("/sources", response_model=list[SourceOut], summary="List indexed sources")
-def sources(user_id: str = Depends(get_current_user)) -> list[SourceOut]:
-    return [SourceOut(**s) for s in list_sources(user_id=user_id)]
+def sources(
+    view_as: str | None = Query(None, description="Admin only: scope to this user_id"),
+    current_user: UserInfo = Depends(get_current_user),
+) -> list[SourceOut]:
+    if view_as:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin access required to use view_as.")
+        uid = view_as
+    else:
+        uid = None if current_user.is_admin else current_user.user_id
+    return [SourceOut(**s) for s in list_sources(user_id=uid)]
 
 
 @app.delete("/sources", summary="Delete a source by path")
 def delete(
     source: str = Query(..., description="Exact source path to delete"),
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
-    n = delete_source(source, user_id=user_id)
+    # Admins can delete any source; regular users are scoped to their own.
+    uid = None if current_user.is_admin else current_user.user_id
+    n = delete_source(source, user_id=uid)
     if n == 0:
         raise HTTPException(status_code=404, detail="Source not found")
     return {"status": "ok", "deleted_chunks": n}
@@ -228,8 +275,9 @@ def delete(
 @app.post("/chat", response_model=ChatResponseOut, summary="RAG chatbot")
 def chat(
     req: ChatRequest,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> ChatResponseOut:
+    uid = None if current_user.is_admin else current_user.user_id
     history = [ChatMessage(role=t.role, content=t.content) for t in req.history]
     result = kb_ask(
         req.question,
@@ -237,7 +285,7 @@ def chat(
         top_k=req.top_k,
         source_filter=req.source_filter,
         file_type=req.file_type,
-        user_id=user_id,
+        user_id=uid,
     )
     return ChatResponseOut(
         answer=result.answer,
@@ -249,8 +297,9 @@ def chat(
 async def ingest_meeting(
     file: Annotated[UploadFile, File(description="Meeting transcript or notes file")],
     force: Annotated[bool, Form()] = False,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> IngestMeetingIngestResponse:
+    user_id = current_user.user_id
     """
     Ingest the uploaded file into pgvector (same as /upload).
     Call POST /summarize-meeting next to generate the summary and push to TTT.
@@ -272,8 +321,9 @@ async def ingest_meeting(
 @app.post("/summarize-meeting", response_model=IngestMeetingResponse, summary="Summarize an ingested meeting and push to Time Task Tracker")
 def summarize_meeting(
     req: SummarizeMeetingRequest,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> IngestMeetingResponse:
+    user_id = current_user.user_id
     """
     Run RAG summarization on an already-ingested meeting file and push the result to TTT.
     Called as a second step after POST /ingest-meeting succeeds.
@@ -364,8 +414,9 @@ def _feedback_conn():
 @app.post("/feedback", summary="Submit thumbs up/down rating for a chat response")
 def submit_feedback(
     req: FeedbackRequest,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
+    user_id = current_user.user_id
     if req.rating not in (1, -1):
         raise HTTPException(status_code=422, detail="rating must be 1 or -1")
     conn = _feedback_conn()
@@ -395,8 +446,9 @@ def submit_feedback(
 @app.get("/feedback/stats", summary="Feedback statistics and low-rated queries")
 def feedback_stats(
     limit: int = Query(20, ge=1, le=100),
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
+    user_id = current_user.user_id
     conn = _feedback_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -458,8 +510,9 @@ def feedback_stats(
           summary="Multi-step agentic meeting summariser")
 def agentic_meeting(
     req: AgenticMeetingRequest,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> AgenticMeetingResponse:
+    user_id = current_user.user_id
     """
     Agentic pipeline for meeting summarisation.
 

@@ -50,8 +50,10 @@ export async function uploadFile(file, force = false, token, { projectCode, docT
   return res.json();
 }
 
-export async function getSources(token) {
-  const res = await fetch(`${BASE}/sources`, {
+export async function getSources(token, viewAs) {
+  const params = new URLSearchParams();
+  if (viewAs) params.append("view_as", viewAs);
+  const res = await fetch(`${BASE}/sources?${params}`, {
     headers: authHeaders(token),
   });
   if (!res.ok) await throwApiError(res);

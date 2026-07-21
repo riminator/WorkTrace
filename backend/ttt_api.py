@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from kb.auth import get_current_user
+from kb.auth import UserInfo, get_current_user
 from kb.config import TTT_DATABASE_URL, TTT_PGSSL
 
 router = APIRouter(prefix="/ttt", tags=["ttt"])
@@ -339,25 +339,30 @@ def _insert_entries(entries: list[dict], user_id: str, conn) -> tuple[int, int]:
 # ── Internal query helper (used by routes + summary/export) ──────────────────
 
 def _fetch_entries(
-    user_id: str,
+    user_id: str | None,
     start_date: str | None = None,
     end_date: str | None = None,
     project_code: str | None = None,
 ) -> list[dict]:
-    """Shared DB query — all routes use this instead of calling each other."""
+    """Shared DB query — all routes use this instead of calling each other.
+
+    Pass user_id=None to return entries for ALL users (admin only).
+    """
     conn = _get_conn()
     try:
-        conditions = ["user_id = %s"]
-        params: list[Any] = [user_id]
+        conditions: list[str] = []
+        params: list[Any] = []
+        if user_id is not None:
+            conditions.append("user_id = %s"); params.append(user_id)
         if start_date:
             conditions.append("entry_date >= %s"); params.append(start_date)
         if end_date:
             conditions.append("entry_date <= %s"); params.append(end_date)
         if project_code:
             conditions.append("project_code = %s"); params.append(project_code)
-        where = " AND ".join(conditions)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM time_entries WHERE {where} ORDER BY entry_date DESC", params)
+            cur.execute(f"SELECT * FROM time_entries {where} ORDER BY entry_date DESC", params)
             return [_row_to_dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -365,20 +370,37 @@ def _fetch_entries(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+def _resolve_uid(current_user: UserInfo, view_as: str | None) -> str | None:
+    """Return the effective user_id to filter by.
+
+    - Regular user: always their own ID.
+    - Admin with no view_as: None (all users).
+    - Admin with view_as: that specific UUID.
+    - Non-admin trying view_as: 403.
+    """
+    if view_as:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin access required to use view_as.")
+        return view_as
+    return None if current_user.is_admin else current_user.user_id
+
+
 @router.get("/entries")
 def list_entries(
     start_date:   str | None = Query(None),
     end_date:     str | None = Query(None),
     project_code: str | None = Query(None),
-    user_id: str = Depends(get_current_user),
+    view_as:      str | None = Query(None, description="Admin only: scope to this user_id"),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> list[dict]:
-    return _fetch_entries(user_id, start_date, end_date, project_code)
+    uid = _resolve_uid(current_user, view_as)
+    return _fetch_entries(uid, start_date, end_date, project_code)
 
 
 @router.post("/entries/bulk-delete")
 def bulk_delete_entries(
     req: BulkDeleteRequest,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
     if not req.ids:
         raise HTTPException(status_code=400, detail="No IDs provided.")
@@ -387,10 +409,13 @@ def bulk_delete_entries(
         deleted = 0
         with conn.cursor() as cur:
             for eid in req.ids:
-                cur.execute(
-                    "DELETE FROM time_entries WHERE id = %s AND user_id = %s",
-                    (eid, user_id),
-                )
+                if current_user.is_admin:
+                    cur.execute("DELETE FROM time_entries WHERE id = %s", (eid,))
+                else:
+                    cur.execute(
+                        "DELETE FROM time_entries WHERE id = %s AND user_id = %s",
+                        (eid, current_user.user_id),
+                    )
                 deleted += cur.rowcount
         conn.commit()
         return {"deletedCount": deleted, "totalRequested": len(req.ids)}
@@ -401,12 +426,15 @@ def bulk_delete_entries(
 @router.get("/entries/{entry_id}")
 def get_entry(
     entry_id: str,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM time_entries WHERE id = %s AND user_id = %s", (entry_id, user_id))
+            if current_user.is_admin:
+                cur.execute("SELECT * FROM time_entries WHERE id = %s", (entry_id,))
+            else:
+                cur.execute("SELECT * FROM time_entries WHERE id = %s AND user_id = %s", (entry_id, current_user.user_id))
             row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Entry not found.")
@@ -418,8 +446,9 @@ def get_entry(
 @router.post("/entries", status_code=201)
 def create_entry(
     entry: EntryCreate,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
+    user_id = current_user.user_id
     conn = _get_conn()
     try:
         eid = str(uuid.uuid4())
@@ -449,12 +478,15 @@ def create_entry(
 def update_entry(
     entry_id: str,
     updates: EntryUpdate,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM time_entries WHERE id = %s AND user_id = %s", (entry_id, user_id))
+            if current_user.is_admin:
+                cur.execute("SELECT * FROM time_entries WHERE id = %s", (entry_id,))
+            else:
+                cur.execute("SELECT * FROM time_entries WHERE id = %s AND user_id = %s", (entry_id, current_user.user_id))
             existing = cur.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Entry not found.")
@@ -475,13 +507,15 @@ def update_entry(
             col = col_map.get(key, key)
             set_parts.append(f"{col} = %s")
             params.append(val)
-        params += [entry_id, user_id]
+        if current_user.is_admin:
+            params.append(entry_id)
+            sql = f"UPDATE time_entries SET {', '.join(set_parts)} WHERE id = %s RETURNING *"
+        else:
+            params += [entry_id, current_user.user_id]
+            sql = f"UPDATE time_entries SET {', '.join(set_parts)} WHERE id = %s AND user_id = %s RETURNING *"
 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                f"UPDATE time_entries SET {', '.join(set_parts)} WHERE id = %s AND user_id = %s RETURNING *",
-                params,
-            )
+            cur.execute(sql, params)
             row = cur.fetchone()
         conn.commit()
         return _row_to_dict(row)
@@ -492,12 +526,15 @@ def update_entry(
 @router.delete("/entries/{entry_id}", status_code=204)
 def delete_entry(
     entry_id: str,
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> None:
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM time_entries WHERE id = %s AND user_id = %s", (entry_id, user_id))
+            if current_user.is_admin:
+                cur.execute("DELETE FROM time_entries WHERE id = %s", (entry_id,))
+            else:
+                cur.execute("DELETE FROM time_entries WHERE id = %s AND user_id = %s", (entry_id, current_user.user_id))
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Entry not found.")
         conn.commit()
@@ -509,9 +546,11 @@ def delete_entry(
 def get_summary(
     start_date: str | None = Query(None),
     end_date:   str | None = Query(None),
-    user_id: str = Depends(get_current_user),
+    view_as:    str | None = Query(None, description="Admin only: scope to this user_id"),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
-    entries = _fetch_entries(user_id, start_date, end_date)
+    uid = _resolve_uid(current_user, view_as)
+    entries = _fetch_entries(uid, start_date, end_date)
 
     total_min    = sum(e["durationMinutes"] for e in entries)
     billable_min = sum(e["durationMinutes"] for e in entries if e["billable"])
@@ -566,9 +605,11 @@ def get_summary(
 def export_csv(
     start_date: str | None = Query(None),
     end_date:   str | None = Query(None),
-    user_id: str = Depends(get_current_user),
+    view_as:    str | None = Query(None, description="Admin only: scope to this user_id"),
+    current_user: UserInfo = Depends(get_current_user),
 ):
-    entries = _fetch_entries(user_id, start_date, end_date)
+    uid = _resolve_uid(current_user, view_as)
+    entries = _fetch_entries(uid, start_date, end_date)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["ID", "Date", "Project Code", "Task Type", "Duration (minutes)",
@@ -597,8 +638,9 @@ def export_csv(
 @router.post("/import/csv")
 async def import_csv(
     file: Annotated[UploadFile, File()],
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
+    user_id = current_user.user_id
     content = await file.read()
     try:
         entries = _parse_csv_bytes(content)
@@ -617,8 +659,9 @@ async def import_csv(
 @router.post("/import/ics")
 async def import_ics(
     file: Annotated[UploadFile, File()],
-    user_id: str = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict:
+    user_id = current_user.user_id
     content = await file.read()
     try:
         entries = _parse_ics_bytes(content)
@@ -635,14 +678,21 @@ async def import_ics(
 
 
 @router.get("/projects")
-def list_projects(user_id: str = Depends(get_current_user)) -> list[str]:
+def list_projects(
+    view_as: str | None = Query(None, description="Admin only: scope to this user_id"),
+    current_user: UserInfo = Depends(get_current_user),
+) -> list[str]:
+    uid = _resolve_uid(current_user, view_as)
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT project_code FROM time_entries WHERE user_id = %s ORDER BY project_code",
-                (user_id,),
-            )
+            if uid is None:
+                cur.execute("SELECT DISTINCT project_code FROM time_entries ORDER BY project_code")
+            else:
+                cur.execute(
+                    "SELECT DISTINCT project_code FROM time_entries WHERE user_id = %s ORDER BY project_code",
+                    (uid,),
+                )
             return [r[0] for r in cur.fetchall() if r[0]]
     finally:
         conn.close()

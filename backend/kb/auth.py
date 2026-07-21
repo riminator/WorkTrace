@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -24,7 +25,14 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from kb.config import SUPABASE_JWT_SECRET, SUPABASE_URL
+from kb.config import ADMIN_USER_IDS, SUPABASE_JWT_SECRET, SUPABASE_URL
+
+
+@dataclass
+class UserInfo:
+    """Authenticated user context passed to every route handler."""
+    user_id: str
+    is_admin: bool
 
 log = logging.getLogger(__name__)
 
@@ -110,10 +118,10 @@ def _decode_token(token: str) -> dict:
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-) -> str:
+) -> UserInfo:
     """
-    Validate the Supabase JWT in the Authorization header and return the user's
-    UUID string (``sub`` claim), which is stable and unique per Supabase user.
+    Validate the Supabase JWT in the Authorization header and return a UserInfo
+    with the user's UUID and an is_admin flag (true when the UUID is in ADMIN_USER_IDS).
 
     Raises HTTP 401 if the token is missing, expired, or has an invalid signature.
     """
@@ -129,4 +137,4 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has no sub claim.")
 
-    return user_id
+    return UserInfo(user_id=user_id, is_admin=user_id in ADMIN_USER_IDS)

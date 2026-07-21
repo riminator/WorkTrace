@@ -22,7 +22,6 @@
   --radius:       8px;
   --radius-lg:    12px;
   --font:         -apple-system, "Segoe UI", system-ui, sans-serif;
-  --header-h:     52px;
   color-scheme: light;
 }
 
@@ -60,20 +59,32 @@ body {
 
 .header-inner {
   width: 100%;
-  padding: 0 20px;
+  padding: 0 16px;
   position: relative;
 }
 
+/* Row 1: logo + user bar — always a single line, no fixed height */
 .header-row1 {
   display: flex;
   align-items: center;
-  gap: 16px;
-  height: var(--header-h);
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 0;
+}
+
+/* Row 2: nav tabs — wraps freely so the header grows instead of overflowing */
+.header-row2 {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  row-gap: 2px;
+  padding: 0 0 6px;
 }
 
 /* Logo */
 .logo {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #f8fafc;
   white-space: nowrap;
@@ -82,18 +93,14 @@ body {
 }
 .logo span { color: #818cf8; }
 
-/* ── Desktop nav ─────────────────────────────────────────────── */
-.nav-desktop {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-}
+/* nav-desktop is now just a passthrough wrapper */
+.nav-desktop { display: contents; }
 
 .nav-group {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-wrap: wrap;
 }
 
 .nav-group-label {
@@ -102,29 +109,32 @@ body {
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: #475569;
-  padding: 0 8px;
+  padding: 0 6px;
   white-space: nowrap;
 }
 
 .nav-divider {
   width: 1px;
-  height: 20px;
+  height: 16px;
   background: #1e293b;
-  margin: 0 6px;
+  margin: 0 4px;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 .tab-btn {
   background: none;
   border: none;
-  padding: 6px 12px;
+  padding: 5px 9px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   color: #94a3b8;
   font-family: var(--font);
   transition: background 0.12s, color 0.12s;
   white-space: nowrap;
+  line-height: 1.4;
 }
 .tab-btn:hover  { background: rgba(255,255,255,0.07); color: #e2e8f0; }
 .tab-btn.active { background: rgba(99,102,241,0.18);  color: #a5b4fc; }
@@ -135,17 +145,21 @@ body {
 
 .ttt-label { color: #38bdf8 !important; }
 
+.admin-tab        { color: #a78bfa; }
+.admin-tab:hover  { background: rgba(255,255,255,0.07); color: #ddd6fe; }
+.admin-tab.active { background: rgba(167,139,250,0.18); color: #c4b5fd; }
+
 /* ── User bar ────────────────────────────────────────────────── */
 .user-bar {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .user-email {
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
   white-space: nowrap;
   overflow: hidden;
@@ -157,9 +171,9 @@ body {
   background: none;
   border: 1px solid #334155;
   color: #64748b;
-  padding: 4px 12px;
+  padding: 3px 10px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--font);
   cursor: pointer;
   white-space: nowrap;
@@ -167,7 +181,7 @@ body {
 }
 .logout-btn:hover { border-color: #64748b; color: #e2e8f0; }
 
-/* ── Hamburger (mobile only) ─────────────────────────────────── */
+/* ── Hamburger — only shown below 520px ─────────────────────── */
 .hamburger {
   display: none;
   flex-direction: column;
@@ -191,7 +205,7 @@ body {
 /* ── Mobile dropdown menu ────────────────────────────────────── */
 .mobile-menu {
   position: absolute;
-  top: calc(var(--header-h) + 4px);
+  top: calc(100% + 4px);
   right: 16px;
   background: #0f172a;
   border: 1px solid #1e293b;
@@ -218,7 +232,7 @@ body {
   border: none;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   color: #94a3b8;
@@ -228,8 +242,10 @@ body {
 }
 .mobile-tab:hover  { background: rgba(255,255,255,0.07); color: #e2e8f0; }
 .mobile-tab.active { background: rgba(99,102,241,0.18);  color: #a5b4fc; }
-.mobile-tab.ttt-tab        { color: #7dd3fc; }
-.mobile-tab.ttt-tab.active { background: rgba(14,165,233,0.18); color: #38bdf8; }
+.mobile-tab.ttt-tab          { color: #7dd3fc; }
+.mobile-tab.ttt-tab.active   { background: rgba(14,165,233,0.18); color: #38bdf8; }
+.mobile-tab.admin-tab        { color: #a78bfa; }
+.mobile-tab.admin-tab.active { background: rgba(167,139,250,0.18); color: #c4b5fd; }
 
 .mobile-menu-divider {
   height: 1px;
@@ -237,22 +253,22 @@ body {
   margin: 6px 0;
 }
 
-/* ── Responsive breakpoint ───────────────────────────────────── */
-@media (max-width: 860px) {
-  .nav-desktop   { display: none; }
-  .hamburger     { display: flex; }
-  .user-email    { display: none; }
+/* ── Responsive: collapse to hamburger only on very small screens */
+@media (max-width: 520px) {
+  .header-row2 { display: none; }
+  .hamburger   { display: flex; }
+  .user-email  { display: none; }
 }
 
 /* ── Main content ────────────────────────────────────────────── */
 .main {
   flex: 1;
   width: 100%;
-  padding: 28px 24px;
+  padding: 24px 20px;
 }
 
 @media (max-width: 600px) {
-  .main { padding: 16px 12px; }
+  .main { padding: 14px 12px; }
 }
 
 /* ── Card ────────────────────────────────────────────────────── */
@@ -530,7 +546,8 @@ body {
 .chat-wrap {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--header-h) - 56px);
+  /* Use svh so the chat fills the viewport minus header (which grows with wrapping tabs) */
+  height: calc(100svh - 120px);
   min-height: 400px;
 }
 .chat-thread {
@@ -860,7 +877,7 @@ body {
 .chat-layout {
   display: flex;
   gap: 0;
-  height: calc(100vh - var(--header-h) - 56px);
+  height: calc(100svh - 120px);
   min-height: 400px;
 }
 

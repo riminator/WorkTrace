@@ -19,11 +19,12 @@ async function throwApiError(res) {
   throw new Error(msg);
 }
 
-export async function getEntries({ startDate, endDate, projectCode } = {}, token) {
+export async function getEntries({ startDate, endDate, projectCode, viewAs } = {}, token) {
   const params = new URLSearchParams();
   if (startDate)   params.append("start_date",   startDate);
   if (endDate)     params.append("end_date",     endDate);
   if (projectCode) params.append("project_code", projectCode);
+  if (viewAs)      params.append("view_as",      viewAs);
   const res = await fetch(`${BASE}/ttt/entries?${params}`, {
     headers: authHeaders(token),
   });
@@ -77,10 +78,11 @@ export async function bulkDeleteEntries(ids, token) {
   return res.json();
 }
 
-export async function getSummary({ startDate, endDate } = {}, token) {
+export async function getSummary({ startDate, endDate, viewAs } = {}, token) {
   const params = new URLSearchParams();
   if (startDate) params.append("start_date", startDate);
   if (endDate)   params.append("end_date",   endDate);
+  if (viewAs)    params.append("view_as",    viewAs);
   const res = await fetch(`${BASE}/ttt/summary?${params}`, {
     headers: authHeaders(token),
   });
@@ -88,8 +90,10 @@ export async function getSummary({ startDate, endDate } = {}, token) {
   return res.json();
 }
 
-export async function getProjects(token) {
-  const res = await fetch(`${BASE}/ttt/projects`, {
+export async function getProjects(token, viewAs) {
+  const params = new URLSearchParams();
+  if (viewAs) params.append("view_as", viewAs);
+  const res = await fetch(`${BASE}/ttt/projects?${params}`, {
     headers: authHeaders(token),
   });
   if (!res.ok) await throwApiError(res);
