@@ -61,7 +61,10 @@ def _build_context(
     Returns (context_string, results_list).
     Identical retrieval logic to chat.py — only the LLM call differs.
     """
-    is_temporal = _is_temporal_meeting_query(question)
+    # When source_filter is set the caller targets a specific file (e.g.
+    # /summarize-meeting) — skip the temporal short-circuit so the vector
+    # search actually runs against that file.
+    is_temporal = _is_temporal_meeting_query(question) and not source_filter
 
     ttt_context = ""
     if not skip_ttt:
