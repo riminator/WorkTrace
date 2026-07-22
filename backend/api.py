@@ -187,16 +187,20 @@ def admin_users(current_user: UserInfo = Depends(get_current_user)) -> list[dict
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT DISTINCT user_id FROM (
-                    SELECT user_id::text AS user_id FROM time_entries
-                    UNION
-                    SELECT user_id::text AS user_id FROM documents WHERE user_id IS NOT NULL
-                ) AS all_users
-                ORDER BY user_id
+                SELECT au.user_id, COALESCE(su.email, au.user_id) AS email
+                FROM (
+                    SELECT DISTINCT user_id FROM (
+                        SELECT user_id::text AS user_id FROM time_entries
+                        UNION
+                        SELECT user_id::text AS user_id FROM documents WHERE user_id IS NOT NULL
+                    ) AS combined
+                ) AS au
+                LEFT JOIN auth.users su ON su.id::text = au.user_id
+                ORDER BY email
                 """
             )
             rows = cur.fetchall()
-        return [{"user_id": r[0], "label": r[0]} for r in rows]
+        return [{"user_id": r[0], "email": r[1]} for r in rows]
     finally:
         conn.close()
 

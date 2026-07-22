@@ -229,11 +229,11 @@ export default function AdminPanel({ token }) {
 
   const filtered = users.filter(u =>
     u.user_id.toLowerCase().includes(search.toLowerCase()) ||
-    (u.label || "").toLowerCase().includes(search.toLowerCase())
+    (u.email || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  function shortId(uid) {
-    return uid ? uid.slice(0, 8) + "…" : "—";
+  function emailLabel(u) {
+    return u.email || u.user_id;
   }
 
   return (
@@ -298,9 +298,7 @@ export default function AdminPanel({ token }) {
                   transition: "background 0.1s",
                 }}
               >
-                <span style={{ display: "block", fontFamily: "monospace", fontSize: 11, color: active ? "var(--accent)" : "var(--muted)" }}>
-                  {shortId(u.user_id)}
-                </span>
+                {emailLabel(u)}
               </button>
             );
           })}
@@ -319,7 +317,7 @@ export default function AdminPanel({ token }) {
                 <div>
                   <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Viewing data for</div>
                   <code style={{ fontSize: 12, color: "var(--accent)", background: "var(--accent-light)", padding: "3px 10px", borderRadius: 4 }}>
-                    {selectedUser}
+                    {emailLabel(users.find(u => u.user_id === selectedUser) || { user_id: selectedUser })}
                   </code>
                 </div>
                 <div style={{ display: "flex", gap: 4, marginLeft: "auto", flexWrap: "wrap" }}>
