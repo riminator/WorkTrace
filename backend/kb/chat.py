@@ -128,7 +128,11 @@ def ask(
     #    semantically similar chunks (e.g. a WorkTrace demo PDF) which the LLM
     #    then misidentifies as the last meeting.  Skip the vector search entirely
     #    for these queries and let the TTT context carry the full answer.
-    is_temporal = _is_temporal_meeting_query(question)
+    #
+    #    Exception: when source_filter is set the caller is targeting a specific
+    #    already-ingested file (e.g. /summarize-meeting).  In that case the
+    #    vector search MUST run against that file — skip the temporal short-circuit.
+    is_temporal = _is_temporal_meeting_query(question) and not source_filter
 
     ttt_context = ""
     if not skip_ttt:
