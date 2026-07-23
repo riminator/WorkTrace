@@ -94,32 +94,11 @@ body {
 .logo span { color: #818cf8; }
 
 /* nav-desktop is now just a passthrough wrapper */
-.nav-desktop { display: contents; }
-
-.nav-group {
+.nav-desktop {
   display: flex;
   align-items: center;
   gap: 2px;
   flex-wrap: wrap;
-}
-
-.nav-group-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: #475569;
-  padding: 0 6px;
-  white-space: nowrap;
-}
-
-.nav-divider {
-  width: 1px;
-  height: 16px;
-  background: #1e293b;
-  margin: 0 4px;
-  align-self: center;
-  flex-shrink: 0;
 }
 
 .tab-btn {
@@ -138,12 +117,6 @@ body {
 }
 .tab-btn:hover  { background: rgba(255,255,255,0.07); color: #e2e8f0; }
 .tab-btn.active { background: rgba(99,102,241,0.18);  color: #a5b4fc; }
-
-.ttt-tab        { color: #7dd3fc; }
-.ttt-tab:hover  { background: rgba(255,255,255,0.07); color: #e0f2fe; }
-.ttt-tab.active { background: rgba(14,165,233,0.18);  color: #38bdf8; }
-
-.ttt-label { color: #38bdf8 !important; }
 
 .admin-tab        { color: #a78bfa; }
 .admin-tab:hover  { background: rgba(255,255,255,0.07); color: #ddd6fe; }
@@ -217,16 +190,6 @@ body {
 
 .mobile-menu-section { display: flex; flex-direction: column; gap: 2px; }
 
-.mobile-menu-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: #475569;
-  padding: 6px 10px 4px;
-}
-.mobile-menu-label.ttt-label { color: #38bdf8; }
-
 .mobile-tab {
   background: none;
   border: none;
@@ -242,16 +205,8 @@ body {
 }
 .mobile-tab:hover  { background: rgba(255,255,255,0.07); color: #e2e8f0; }
 .mobile-tab.active { background: rgba(99,102,241,0.18);  color: #a5b4fc; }
-.mobile-tab.ttt-tab          { color: #7dd3fc; }
-.mobile-tab.ttt-tab.active   { background: rgba(14,165,233,0.18); color: #38bdf8; }
 .mobile-tab.admin-tab        { color: #a78bfa; }
 .mobile-tab.admin-tab.active { background: rgba(167,139,250,0.18); color: #c4b5fd; }
-
-.mobile-menu-divider {
-  height: 1px;
-  background: #1e293b;
-  margin: 6px 0;
-}
 
 /* ── Responsive: collapse to hamburger only on very small screens */
 @media (max-width: 520px) {

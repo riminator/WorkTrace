@@ -6,35 +6,31 @@ import Chat from "./components/Chat";
 import LoginPage from "./components/LoginPage";
 import TTTDashboard from "./components/TTTDashboard";
 import TTTEntries from "./components/TTTEntries";
-import TTTImport from "./components/TTTImport";
 import TTTReports from "./components/TTTReports";
 import FeedbackStats from "./components/FeedbackStats";
 import AdminPanel from "./components/AdminPanel";
+import HowToUse from "./components/HowToUse";
 import { useSession, useAccessToken, useIsAdmin } from "./context/AuthContext";
 import { supabase } from "./supabaseClient";
 import "./App.css";
 
-const KB_TABS  = ["Chat", "Search", "Documents", "Sources", "Feedback"];
-const TTT_TABS = ["Dashboard", "Time Entries", "Import", "Reports"];
+const ALL_TABS = ["Dashboard", "Time Entries", "Reports", "Import", "Chat", "Search", "Sources", "Feedback", "How to Use"];
 
 export default function App() {
   const session  = useSession();
   const token    = useAccessToken();
   const isAdmin  = useIsAdmin();
 
-  // Default admins to the Admin tab; regular users to Dashboard
-  const [tab, setTab]           = useState(null);  // null = "not yet decided"
+  const [tab, setTab]           = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef                 = useRef(null);
 
-  // Set initial tab once we know isAdmin (after /me resolves)
   useEffect(() => {
     if (tab === null && session) {
       setTab(isAdmin ? "Admin" : "Dashboard");
     }
   }, [isAdmin, session]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClick(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -52,8 +48,6 @@ export default function App() {
 
   if (session === undefined || (session && tab === null)) return <div className="app-loading">Loading…</div>;
   if (!session) return <LoginPage />;
-
-  const isTTT = TTT_TABS.includes(tab);
 
   return (
     <div className="app">
@@ -75,57 +69,29 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── Row 2: nav tabs — wraps to new line when narrow ── */}
+          {/* ── Row 2: flat nav ── */}
           <div className="header-row2">
             <nav className="nav-desktop">
               {isAdmin && (
-                <>
-                  <div className="nav-group">
-                    <button className={`tab-btn admin-tab ${tab === "Admin" ? "active" : ""}`} onClick={() => switchTab("Admin")}>
-                      ⚙ Admin
-                    </button>
-                  </div>
-                  <div className="nav-divider" />
-                </>
+                <button className={`tab-btn admin-tab ${tab === "Admin" ? "active" : ""}`} onClick={() => switchTab("Admin")}>
+                  ⚙ Admin
+                </button>
               )}
-              <div className="nav-group">
-                <span className="nav-group-label ttt-label">Time Tracker</span>
-                {TTT_TABS.map(t => (
-                  <button key={t} className={`tab-btn ttt-tab ${tab === t ? "active" : ""}`} onClick={() => switchTab(t)}>{t}</button>
-                ))}
-              </div>
-              <div className="nav-divider" />
-              <div className="nav-group">
-                <span className="nav-group-label">Knowledge Base</span>
-                {KB_TABS.map(t => (
-                  <button key={t} className={`tab-btn ${tab === t ? "active" : ""}`} onClick={() => switchTab(t)}>{t}</button>
-                ))}
-              </div>
+              {ALL_TABS.map(t => (
+                <button key={t} className={`tab-btn ${tab === t ? "active" : ""}`} onClick={() => switchTab(t)}>{t}</button>
+              ))}
             </nav>
           </div>
 
-          {/* Mobile dropdown — only appears below 520px */}
+          {/* Mobile dropdown */}
           {menuOpen && (
             <div className="mobile-menu" ref={menuRef}>
-              {isAdmin && (
-                <>
-                  <div className="mobile-menu-section">
-                    <button className={`mobile-tab admin-tab ${tab === "Admin" ? "active" : ""}`} onClick={() => switchTab("Admin")}>⚙ Admin</button>
-                  </div>
-                  <div className="mobile-menu-divider" />
-                </>
-              )}
               <div className="mobile-menu-section">
-                <span className="mobile-menu-label">Knowledge Base</span>
-                {KB_TABS.map(t => (
+                {isAdmin && (
+                  <button className={`mobile-tab admin-tab ${tab === "Admin" ? "active" : ""}`} onClick={() => switchTab("Admin")}>⚙ Admin</button>
+                )}
+                {ALL_TABS.map(t => (
                   <button key={t} className={`mobile-tab ${tab === t ? "active" : ""}`} onClick={() => switchTab(t)}>{t}</button>
-                ))}
-              </div>
-              <div className="mobile-menu-divider" />
-              <div className="mobile-menu-section">
-                <span className="mobile-menu-label ttt-label">Time Tracker</span>
-                {TTT_TABS.map(t => (
-                  <button key={t} className={`mobile-tab ttt-tab ${tab === t ? "active" : ""}`} onClick={() => switchTab(t)}>{t}</button>
                 ))}
               </div>
             </div>
@@ -135,16 +101,16 @@ export default function App() {
       </header>
 
       <main className="main">
-        {tab === "Admin"        && <AdminPanel   token={token} />}
-        {tab === "Chat"         && <Chat         token={token} />}
-        {tab === "Search"       && <Search       token={token} />}
-        {tab === "Documents"    && <Documents    token={token} />}
-        {tab === "Sources"      && <Sources      token={token} />}
+        {tab === "Admin"        && <AdminPanel    token={token} />}
+        {tab === "Chat"         && <Chat          token={token} />}
+        {tab === "Search"       && <Search        token={token} />}
+        {tab === "Import"       && <Documents     token={token} />}
+        {tab === "Sources"      && <Sources       token={token} />}
         {tab === "Feedback"     && <FeedbackStats token={token} />}
-        {tab === "Dashboard"    && <TTTDashboard token={token} />}
-        {tab === "Time Entries" && <TTTEntries   token={token} />}
-        {tab === "Import"       && <TTTImport    token={token} />}
-        {tab === "Reports"      && <TTTReports   token={token} />}
+        {tab === "Dashboard"    && <TTTDashboard  token={token} />}
+        {tab === "Time Entries" && <TTTEntries    token={token} />}
+        {tab === "Reports"      && <TTTReports    token={token} />}
+        {tab === "How to Use"   && <HowToUse />}
       </main>
     </div>
   );
