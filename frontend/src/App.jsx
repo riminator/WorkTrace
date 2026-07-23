@@ -1,13 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import Upload from "./components/Upload";
+import Documents from "./components/Documents";
 import Search from "./components/Search";
 import Sources from "./components/Sources";
 import Chat from "./components/Chat";
-import MeetingUpload from "./components/MeetingUpload";
 import LoginPage from "./components/LoginPage";
 import TTTDashboard from "./components/TTTDashboard";
 import TTTEntries from "./components/TTTEntries";
-import TTTManualEntry from "./components/TTTManualEntry";
 import TTTImport from "./components/TTTImport";
 import TTTReports from "./components/TTTReports";
 import FeedbackStats from "./components/FeedbackStats";
@@ -16,8 +14,8 @@ import { useSession, useAccessToken, useIsAdmin } from "./context/AuthContext";
 import { supabase } from "./supabaseClient";
 import "./App.css";
 
-const KB_TABS  = ["Chat", "Search", "Upload", "Meeting", "Sources", "Feedback"];
-const TTT_TABS = ["Dashboard", "Time Entries", "Manual Entry", "Import", "Reports"];
+const KB_TABS  = ["Chat", "Search", "Documents", "Sources", "Feedback"];
+const TTT_TABS = ["Dashboard", "Time Entries", "Import", "Reports"];
 
 export default function App() {
   const session  = useSession();
@@ -137,18 +135,16 @@ export default function App() {
       </header>
 
       <main className="main">
-        {tab === "Admin"        && <AdminPanel    token={token} />}
-        {tab === "Chat"         && <Chat          token={token} />}
-        {tab === "Search"       && <Search        token={token} />}
-        {tab === "Upload"       && <Upload        token={token} />}
-        {tab === "Meeting"      && <MeetingUpload token={token} />}
-        {tab === "Sources"      && <Sources       token={token} />}
+        {tab === "Admin"        && <AdminPanel   token={token} />}
+        {tab === "Chat"         && <Chat         token={token} />}
+        {tab === "Search"       && <Search       token={token} />}
+        {tab === "Documents"    && <Documents    token={token} />}
+        {tab === "Sources"      && <Sources      token={token} />}
         {tab === "Feedback"     && <FeedbackStats token={token} />}
-        {tab === "Dashboard"    && <TTTDashboard  token={token} />}
-        {tab === "Time Entries" && <TTTEntries    token={token} />}
-        {tab === "Manual Entry" && <TTTManualEntry token={token} />}
-        {tab === "Import"       && <TTTImport     token={token} />}
-        {tab === "Reports"      && <TTTReports    token={token} />}
+        {tab === "Dashboard"    && <TTTDashboard token={token} />}
+        {tab === "Time Entries" && <TTTEntries   token={token} />}
+        {tab === "Import"       && <TTTImport    token={token} />}
+        {tab === "Reports"      && <TTTReports   token={token} />}
       </main>
     </div>
   );
