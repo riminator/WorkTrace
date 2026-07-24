@@ -1,3 +1,5 @@
+const code = { fontFamily: "monospace", fontSize: 11, background: "var(--surface)", padding: "1px 5px", borderRadius: 3, border: "1px solid var(--border)" };
+
 export default function HowToUse() {
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -28,9 +30,14 @@ export default function HowToUse() {
             description="A filterable, editable table of every logged entry. You can inline-edit any field, bulk-delete entries, and filter by date range or project code. Use this to review and clean up what was auto-imported."
           />
           <GuideItem
+            icon="📅"
+            title="Calendar"
+            description={<>Automatically sync your Outlook (or any Exchange / Google) calendar into WorkTrace. Drop an <strong>.ics</strong> file exported from any calendar app, or use the built-in <strong>auto-sync script</strong> on macOS / Windows so entries appear every morning with no manual work. Each calendar event becomes a time entry — duration, project code, and task type are auto-classified from the event title.</>}
+          />
+          <GuideItem
             icon="📥"
             title="Import"
-            description="Import time entries from a CSV file or an ICS calendar export. The CSV importer accepts the WorkTrace template format as well as Outlook/Google Calendar exports. ICS import reads calendar event times and durations automatically."
+            description="Import time entries from a CSV file. The CSV importer accepts the WorkTrace template format as well as Outlook/Google Calendar exports."
           />
           <GuideItem
             icon="📈"
@@ -95,13 +102,78 @@ export default function HowToUse() {
       </div>
 
       {/* Tips */}
+      {/* Calendar auto-sync section */}
+      <div className="card">
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: "#a78bfa" }}>📅 Calendar Auto-Sync</h3>
+        <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.7, marginBottom: 14 }}>
+          The <strong style={{ color: "var(--text)" }}>Calendar</strong> tab lets you import events directly from any
+          calendar app. For true hands-free sync, use the scripts below — they run once a day and push all your
+          calendar events to WorkTrace automatically.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* macOS */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px 16px" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>🍎 macOS (Outlook / Teams / Google)</div>
+            <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7, marginBottom: 8 }}>
+              Reads from macOS Calendar.app via AppleScript — no Entra app, no OAuth, no Microsoft Graph needed.
+              Outlook for Mac syncs its events into Calendar.app automatically.
+            </p>
+            <ol style={{ fontSize: 12, color: "var(--muted)", paddingLeft: 18, lineHeight: 2 }}>
+              <li>Open Calendar.app and confirm your Outlook events are visible there</li>
+              <li>Install the dependency: <code style={code}>pip install requests</code></li>
+              <li>Test: <code style={code}>python3 scripts/Sync-OutlookToWorkTrace.py --list-calendars</code></li>
+              <li>First run: <code style={code}>python3 scripts/Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"</code></li>
+              <li>Auto-run on Terminal open: already wired into <code style={code}>~/.zshrc</code> — syncs once per day silently</li>
+            </ol>
+            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+              Full guide: <code style={code}>docs/OutlookSync.md</code>
+            </p>
+          </div>
+
+          {/* Windows */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px 16px" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>🪟 Windows (Classic / New Outlook)</div>
+            <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7, marginBottom: 8 }}>
+              Uses Outlook COM automation — reads directly from the running Outlook process, no API needed.
+            </p>
+            <ol style={{ fontSize: 12, color: "var(--muted)", paddingLeft: 18, lineHeight: 2 }}>
+              <li>Copy <code style={code}>scripts/Sync-OutlookToWorkTrace.ps1</code> to your Windows machine</li>
+              <li>Dry-run: <code style={code}>.\Sync-OutlookToWorkTrace.ps1 -DaysBack 3 -WhatIf</code></li>
+              <li>Real run: <code style={code}>.\Sync-OutlookToWorkTrace.ps1 -DaysBack 7</code></li>
+              <li>Schedule: import <code style={code}>scripts/WorkTraceSync-TaskScheduler.xml</code> into Task Scheduler</li>
+            </ol>
+          </div>
+
+          {/* Manual ICS */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px 16px" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>📄 Manual .ics Import (any platform)</div>
+            <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7 }}>
+              Export a <code style={code}>.ics</code> file from any calendar app and drop it in the{" "}
+              <strong style={{ color: "var(--text)" }}>Calendar</strong> tab. Works with Outlook, Google Calendar, and Apple Calendar.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, padding: "10px 14px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 6 }}>
+          <div style={{ fontSize: 12, color: "#0369a1", lineHeight: 1.7 }}>
+            <strong>How user scoping works:</strong> Every imported event is tagged with your Supabase user ID
+            (extracted from the JWT in your browser session). The sync scripts use the same long-lived JWT token
+            configured in <code style={code}>scripts/Sync-OutlookToWorkTrace.py</code>. Entries are only ever
+            visible to the account that imported them — other users see only their own data.
+          </div>
+        </div>
+      </div>
+
+      {/* Tips */}
       <div className="card">
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>💡 Tips & gotchas</h3>
         <ul style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.8, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
           <li><strong>Upload Documents vs Meeting Notes:</strong> Use <em>Upload Documents</em> for any file you just want searchable. Use <em>Meeting Notes</em> only when you want an automatic time entry created alongside indexing.</li>
           <li><strong>Re-index:</strong> If you update a file, check "Re-index existing files" before uploading to replace the old chunks.</li>
           <li><strong>Project codes:</strong> Consistent codes (e.g. <code>PROJ-001</code>) across uploads and time entries let you filter and report by project everywhere.</li>
-          <li><strong>CSV export:</strong> The Reports tab exports time entries. Only entries created via Time Entries → Manual entry, Import, or Meeting Notes upload appear there — regular document uploads do not.</li>
+          <li><strong>Calendar sync is safe to re-run:</strong> Duplicate events are silently skipped — re-running the sync script never creates double entries.</li>
+          <li><strong>CSV export:</strong> The Reports tab exports time entries. Only entries created via Time Entries → Manual entry, Calendar, Import, or Meeting Notes upload appear there — regular document uploads do not.</li>
           <li><strong>Chat grounding:</strong> Answers are grounded in your indexed documents. If Chat says "I don't know", try uploading the relevant document first.</li>
         </ul>
       </div>

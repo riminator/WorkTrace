@@ -1,0 +1,94 @@
+Meeting Title: Client Demo Call — WorkTrace Platform Walkthrough
+Date: August 12, 2026
+Duration: 47 minutes
+Attendees: Akshay Mallireddy (Platform Engineering Intern), Sarah Chen (Engineering Manager, CVAP), James Okafor (Senior Solutions Architect), Priya Nair (Program Coordinator)
+
+---
+
+TRANSCRIPT
+
+[00:00] Sarah Chen: Alright, let's get started. Akshay, the floor is yours — walk us through what you've been building.
+
+[00:08] Akshay Mallireddy: Thanks Sarah. So the platform is called WorkTrace. Quick context before I dive in — it started as a time-tracking tool but it evolved into something bigger. There are two modules that work together: a Time Tracker and a Knowledge Engine. I'll walk through both and then do a live demo.
+
+[00:28] James Okafor: Just to set expectations — is this something that's running live, or is this a prototype?
+
+[00:34] Akshay Mallireddy: It's live. Running on OpenShift, connected to a real database. Everything I'll show you is actual data.
+
+[00:40] Sarah Chen: Good. Let's see it.
+
+[00:43] Akshay Mallireddy: Okay — so the problem we're solving. On the manager side, the core issue is visibility. You don't know how your team's hours are actually being spent unless you ask. Project codes are inconsistent — everyone names things differently — so the reporting is messy. On the new hire side, the problem is friction. They don't know the project codes, they sit in meetings all day and by end of day they can't remember what to log or how long things took.
+
+[01:15] Priya Nair: That's very real. We spend a chunk of every Friday just trying to get the team to submit their timesheets.
+
+[01:22] Akshay Mallireddy: Exactly. WorkTrace is designed to make logging a side effect of work you're already doing, not extra work. Let me show you the Time Tracker first.
+
+[01:32] Akshay Mallireddy: So this is the main dashboard. You can see logged time broken down by project, task type, and whether it's billable. This is the manager view — no one had to send anything for this to appear here.
+
+[01:48] Sarah Chen: How are the project codes getting assigned? Is someone manually categorizing everything?
+
+[01:54] Akshay Mallireddy: No, that's the AI classifier. When you log an entry, you type the meeting title and the system sends it to the LLM — we're using watsonx.ai — which does zero-shot classification. So if I type "Client Demo Call," it infers project code SALES, task type meeting, billable true. If I type "Daily Standup," it maps to project SCRUM, task type standup, billable false. No one has to make that decision. And if the LLM is unavailable for any reason, there's a regex fallback that handles the common patterns.
+
+[02:34] James Okafor: What LLMs does it support? Are you locked into watsonx?
+
+[02:38] Akshay Mallireddy: No — it's pluggable. watsonx.ai with IBM IAM out of the box, but you can swap to OpenAI-compatible APIs or a local Ollama instance with a single environment variable. No code changes.
+
+[02:52] James Okafor: That's a good design. What about the Knowledge Engine?
+
+[02:57] Akshay Mallireddy: So this is the other half of the platform. You upload documents — PDFs, DOCX, plain text files, meeting transcripts — and you can search them semantically or ask questions in plain English. The RAG pipeline retrieves the most relevant chunks before generating an answer, so everything is grounded in your actual documents. Answers come with source citations.
+
+[03:24] Priya Nair: Can you show us what happens when you upload a transcript?
+
+[03:28] Akshay Mallireddy: That's the best part. Let me do that now. I'm uploading this transcript — it's a plain text file. What happens is: it gets chunked, embedded, and indexed for search. Then the RAG pipeline runs a summarization pass and generates a structured meeting summary — topics covered, decisions made, action items, attendees. And at the same time, it calls the Time Tracker API and logs the meeting time automatically, already classified.
+
+[04:02] Sarah Chen: So the upload does the logging too?
+
+[04:05] Akshay Mallireddy: Exactly. One upload — the document gets indexed, the summary is generated, and the time entry appears in the tracker. That's what the "seven things happen automatically" slide is about.
+
+[04:18] James Okafor: What's the vector store? Are you running your own Postgres instance?
+
+[04:23] Akshay Mallireddy: Neon Serverless Postgres with the pgvector extension. Semantic search is cosine similarity on the embedding vectors. Embeddings are Nomic in the cloud or Ollama locally depending on the config.
+
+[04:36] Sarah Chen: And this is all running on OpenShift right now?
+
+[04:39] Akshay Mallireddy: Yes — two FastAPI backends, both containerized, both deployed on OpenShift. The frontend is React with Vite for the Knowledge Engine and a Vanilla JS UI for the Time Tracker.
+
+[04:52] Priya Nair: What does the import flow look like for teams that already have time data?
+
+[04:57] Akshay Mallireddy: There's a CSV importer and an ICS importer for calendar exports. So if your team has been logging time somewhere else, or you want to pull in calendar history, it comes right in. The classifier runs on import too, so everything gets categorized consistently.
+
+[05:13] Sarah Chen: What's on the roadmap?
+
+[05:16] Akshay Mallireddy: Three main things. First — live calendar integration so you don't need to export ICS files anymore. WorkTrace pulls directly from your calendar and meetings log themselves. Second — deeper IBM product integrations: more watsonx.ai instrumentation, watsonx.data for the storage layer. Third — a LangChain workflow dashboard so you can see exactly what the AI pipeline is doing at every step.
+
+[05:44] James Okafor: I want to come back to the classifier. You said it uses zero-shot classification — what's the confidence threshold before it falls back to regex?
+
+[05:52] Akshay Mallireddy: It tries the LLM first regardless of confidence. The confidence score is returned in the JSON response and stored on the entry — you can filter or audit on it. The regex fallback only kicks in if the LLM call fails entirely, not based on confidence score. So the LLM always gets first crack.
+
+[06:10] James Okafor: Makes sense. You could extend that later — low confidence entries flagged for human review.
+
+[06:15] Akshay Mallireddy: That's actually on my notes for the next sprint. A review queue for low-confidence classifications.
+
+[06:21] Sarah Chen: I like this a lot. My biggest pain point right now is exactly what you described — I'm sending three Slack messages a week just asking people to fill in their time. If this removes that loop entirely I'm interested.
+
+[06:35] Priya Nair: Same. The structured meeting summaries are useful on their own. Even if the time tracking wasn't there, being able to search back through every meeting we've had this quarter is valuable.
+
+[06:48] Akshay Mallireddy: That's the goal — useful enough that people actually use it. The time tracking being automatic means there's no behavior change required from the team.
+
+[07:00] Sarah Chen: Okay — a few action items from my side. James, can you take a look at the OpenShift deployment config and give Akshay some feedback on the container setup? Priya, can you pull together a list of the project codes we're currently using so we can seed the classifier config? And Akshay — write up a one-pager on the architecture so we can share it with the broader CVAP team.
+
+[07:24] James Okafor: I'll take a look this week.
+
+[07:27] Priya Nair: I can have the project code list by Thursday.
+
+[07:30] Akshay Mallireddy: One-pager is already in progress — I'll have a draft by EOD tomorrow.
+
+[07:35] Sarah Chen: Great. Let's schedule a follow-up for next week — I want to see the live calendar integration demo when it's ready. Good work, Akshay.
+
+[07:44] Akshay Mallireddy: Thank you. I'll send the recording of this session to everyone after.
+
+[07:48] Sarah Chen: Perfect. Let's wrap there.
+
+---
+
+END OF TRANSCRIPT

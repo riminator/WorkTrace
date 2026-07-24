@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  WorkTrace Outlook Sync — launchd agent for macOS
+  This runs Sync-OutlookToWorkTrace.py every weekday at 08:55 AM.
+
+  SETUP:
+    1. Edit the ProgramArguments path below to match where you cloned WorkTrace.
+    2. Copy this file to ~/Library/LaunchAgents/
+    3. Load it: launchctl load ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
+    4. Test: launchctl start com.worktrace.outlooksync
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
+    rm ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.worktrace.outlooksync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <!-- Update this path to where you cloned WorkTrace -->
+    <string>/Users/YOUR_USERNAME/WorkTrace/scripts/worktrace-sync-launcher.sh</string>
+  </array>
+
+  <!-- Run at 08:55 AM Monday–Friday -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Weekday</key><integer>1</integer>
+      <key>Hour</key><integer>8</integer>
+      <key>Minute</key><integer>55</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>2</integer>
+      <key>Hour</key><integer>8</integer>
+      <key>Minute</key><integer>55</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>3</integer>
+      <key>Hour</key><integer>8</integer>
+      <key>Minute</key><integer>55</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>4</integer>
+      <key>Hour</key><integer>8</integer>
+      <key>Minute</key><integer>55</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>5</integer>
+      <key>Hour</key><integer>8</integer>
+      <key>Minute</key><integer>55</integer>
+    </dict>
+  </array>
+
+  <!-- Write stdout/stderr to log files -->
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/Library/Logs/WorkTraceSync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/Library/Logs/WorkTraceSync-error.log</string>
+
+  <!-- Run even if the job was missed while the machine was asleep -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

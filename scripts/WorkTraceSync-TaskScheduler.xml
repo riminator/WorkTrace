@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  WorkTrace Outlook Sync — Task Scheduler definition
+  Import this file with:
+    schtasks /Create /XML WorkTraceSync-TaskScheduler.xml /TN "WorkTrace\OutlookSync"
+  Or double-click the file in Windows Explorer to import via the GUI.
+
+  BEFORE IMPORTING: replace YOUR_WINDOWS_USERNAME below with your actual Windows username.
+  Find it by running: whoami   (in cmd.exe)
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Exports the last 7 days of Outlook calendar events and imports them into WorkTrace.</Description>
+    <Author>WorkTrace</Author>
+  </RegistrationInfo>
+  <Triggers>
+    <!-- Runs once every day at 08:55 AM, Monday through Friday -->
+    <CalendarTrigger>
+      <StartBoundary>2025-01-01T08:55:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <!-- Replace YOUR_WINDOWS_USERNAME with the output of: whoami -->
+      <UserId>YOUR_WINDOWS_USERNAME</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Users\YOUR_WINDOWS_USERNAME\WorkTrace\scripts\Sync-OutlookToWorkTrace.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

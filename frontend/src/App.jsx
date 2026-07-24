@@ -10,11 +10,12 @@ import TTTReports from "./components/TTTReports";
 import FeedbackStats from "./components/FeedbackStats";
 import AdminPanel from "./components/AdminPanel";
 import HowToUse from "./components/HowToUse";
+import CalendarImport from "./components/CalendarImport";
 import { useSession, useAccessToken, useIsAdmin } from "./context/AuthContext";
 import { supabase } from "./supabaseClient";
 import "./App.css";
 
-const ALL_TABS = ["Dashboard", "Time Entries", "Reports", "Import", "Chat", "Search", "Sources", "Feedback", "How to Use"];
+const ALL_TABS = ["Dashboard", "Time Entries", "Reports", "Calendar", "Import", "Chat", "Search", "Sources", "Feedback", "How to Use"];
 
 export default function App() {
   const session  = useSession();
@@ -110,6 +111,7 @@ export default function App() {
         {tab === "Dashboard"    && <TTTDashboard  token={token} />}
         {tab === "Time Entries" && <TTTEntries    token={token} />}
         {tab === "Reports"      && <TTTReports    token={token} />}
+        {tab === "Calendar"     && <CalendarImport token={token} />}
         {tab === "How to Use"   && <HowToUse />}
       </main>
     </div>

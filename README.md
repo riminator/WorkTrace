@@ -15,6 +15,7 @@ A document and meeting intelligence platform. Upload any file, ask questions in 
 | **ML meeting classifier** | Zero-shot LLM classifier assigns `projectCode`, `taskType`, and `billable` from any meeting title — activate with `USE_LLM_CLASSIFY=true`; regex rules kept as silent fallback |
 | **Chat feedback loop** | Thumbs up/down on every response; approval score dashboard; low-rated query log for iterative improvement |
 | **Time Task Tracker** | Meeting summaries auto-pushed to `time_entries` — dashboard, reports, CSV export |
+| **Calendar auto-sync** | macOS: reads Calendar.app via AppleScript (no Entra app needed); Windows: Outlook COM automation; both run daily via zshrc hook / Task Scheduler |
 | **Multi-user isolation** | Every document and entry scoped to the authenticated Supabase user |
 | **Pluggable LLM** | watsonx · OpenAI · Groq · Ollama — switch via one env var |
 | **OpenShift deployment** | One script deploys everything — postgres, backend, frontend, secrets, sync cronjob |
@@ -62,7 +63,8 @@ WorkTrace/
 │       │   ├── TTTDashboard.jsx  Time tracking dashboard + charts
 │       │   ├── TTTEntries.jsx    Time entry list with filters
 │       │   ├── TTTManualEntry.jsx Manual time entry form
-│       │   ├── TTTImport.jsx     CSV / ICS calendar import
+│       │   ├── TTTImport.jsx     CSV import
+│       │   ├── CalendarImport.jsx .ics drag-and-drop calendar import
 │       │   └── TTTReports.jsx    Reports + CSV export
 │       ├── api.js            Fetch wrappers for all backend routes
 │       ├── tttApi.js         TTT-specific fetch helpers
@@ -82,12 +84,20 @@ WorkTrace/
 │   ├── Dockerfile.backend    Backend image
 │   ├── Dockerfile.frontend   Frontend image (Vite build → nginx)
 │   └── nginx.conf            nginx SPA config — proxies /api/* to backend
+├── scripts/                  Local automation scripts
+│   ├── Sync-OutlookToWorkTrace.py       macOS calendar auto-sync (AppleScript → WorkTrace)
+│   ├── Sync-OutlookToWorkTrace.ps1      Windows calendar auto-sync (Outlook COM → WorkTrace)
+│   ├── com.worktrace.outlooksync.plist  macOS launchd schedule (8:55 AM Mon–Fri)
+│   └── WorkTraceSync-TaskScheduler.xml  Windows Task Scheduler import
 ├── recorder/                 macOS meeting recorder (optional)
 │   ├── teams_recorder.py     ffmpeg capture → Whisper transcription → ingest
 │   └── README.md
 ├── sample_docs/              Sample files for testing
 ├── docker-compose.yml        Local pgvector container (dev only)
 └── docs/                     Architecture + feature docs
+    ├── OutlookSync.md        Calendar auto-sync setup guide (macOS + Windows)
+    ├── Technical.md
+    └── Overview.md
 ```
 
 ---
@@ -156,6 +166,58 @@ To trigger manually:
 oc create job supabase-sync-manual --from=cronjob/worktrace-supabase-sync
 oc logs -f job/supabase-sync-manual
 ```
+
+---
+
+## Calendar auto-sync
+
+Automatically imports Outlook / Teams / Exchange calendar events into WorkTrace every day — no Entra app, no OAuth, no Microsoft Graph.
+
+| Platform | Script | Mechanism |
+|---|---|---|
+| **macOS** | `scripts/Sync-OutlookToWorkTrace.py` | AppleScript → Calendar.app (Outlook syncs here automatically) |
+| **Windows** | `scripts/Sync-OutlookToWorkTrace.ps1` | Outlook COM automation |
+
+### macOS quick start
+
+```bash
+# 1. Verify Outlook events appear in Calendar.app (open it and check)
+# 2. Install the only dependency
+pip install requests
+
+# 3. List your calendars
+python3 scripts/Sync-OutlookToWorkTrace.py --list-calendars
+
+# 4. First-run backfill
+python3 scripts/Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"
+
+# 5. Schedule (runs at 8:55 AM Mon–Fri via zshrc hook — already added)
+# Opens a new Terminal → syncs once per day automatically
+```
+
+> **macOS 15 Sequoia note:** The script uses AppleScript to talk to Calendar.app directly, bypassing the EventKit TCC permission issue in Sequoia where CLI tools can't be added to the Calendars privacy list.
+
+### Windows quick start
+
+```powershell
+# Dry-run — prints events without importing
+.\scripts\Sync-OutlookToWorkTrace.ps1 -DaysBack 3 -WhatIf
+
+# Real run
+.\scripts\Sync-OutlookToWorkTrace.ps1 -DaysBack 7
+
+# Schedule via Task Scheduler
+# Edit scripts/WorkTraceSync-TaskScheduler.xml (replace YOUR_WINDOWS_USERNAME)
+schtasks /Create /XML "scripts\WorkTraceSync-TaskScheduler.xml" /TN "WorkTrace\OutlookSync"
+```
+
+### How user scoping works
+
+The sync scripts POST to `/api/ttt/import/ics` with a **Bearer JWT token** in the `Authorization` header. The backend validates the JWT via Supabase and extracts the `user_id`. Every inserted `time_entry` row is tagged with that `user_id`. All queries filter by `user_id` — entries are never visible to other users.
+
+The JWT in `scripts/Sync-OutlookToWorkTrace.py` is the same long-lived HS256 token used by the Bob MCP server (`~/.bob/settings/mcp.json` → `WORKTRACE_TOKEN`). It expires in 2033 and only needs to be updated when the cluster changes.
+
+See [`docs/OutlookSync.md`](docs/OutlookSync.md) for the full setup guide.
 
 ---
 

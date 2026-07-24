@@ -72,6 +72,54 @@ Without this, login redirects will fail.
 
 ---
 
+## Calendar auto-sync setup
+
+After deploying, set up the local calendar sync script so events flow in automatically.
+
+### macOS
+
+```bash
+# 1. Open Calendar.app — confirm your Outlook/Exchange events are there
+# 2. Install dependency
+pip install requests
+
+# 3. List available calendars (find your Exchange calendar name)
+python3 scripts/Sync-OutlookToWorkTrace.py --list-calendars
+
+# 4. First-run backfill
+python3 scripts/Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"
+
+# 5. From now on — a zshrc hook runs the sync once per day when you open Terminal
+# (already added during setup — see ~/.zshrc)
+```
+
+> **Sequoia note:** The script uses AppleScript to read from Calendar.app — no EventKit TCC permission needed.
+> If you don't see your events in Calendar.app, open Outlook → Preferences → Sync → enable macOS Calendar sync.
+
+### Windows
+
+```powershell
+# Copy script to Windows machine, then:
+.\scripts\Sync-OutlookToWorkTrace.ps1 -DaysBack 7
+
+# Schedule (runs 8:55 AM Mon–Fri):
+# Edit scripts/WorkTraceSync-TaskScheduler.xml — replace YOUR_WINDOWS_USERNAME
+schtasks /Create /XML "scripts\WorkTraceSync-TaskScheduler.xml" /TN "WorkTrace\OutlookSync"
+```
+
+### Updating the URL / token after a cluster migration
+
+Edit the two constants at the top of `scripts/Sync-OutlookToWorkTrace.py`:
+
+```python
+WORKTRACE_URL   = "https://NEW-CLUSTER-URL.techzone.ibm.com"
+WORKTRACE_TOKEN = "NEW-JWT-TOKEN"   # same as WORKTRACE_TOKEN in ~/.bob/settings/mcp.json
+```
+
+For Windows, update the `$WorkTraceUrl` and `$Token` defaults in `scripts/Sync-OutlookToWorkTrace.ps1`.
+
+---
+
 ## Daily Supabase sync
 
 The deploy script automatically applies `sync-cronjob.yaml`, which runs at **02:00 UTC** every night. It mirrors:
