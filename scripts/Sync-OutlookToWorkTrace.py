@@ -215,23 +215,29 @@ return output
         description = parts[5] if len(parts) > 5 else ""
 
         try:
-            # AppleScript returns dates like: "Thursday, July 24, 2025 at 9:00:00 AM"
-            # Strip the day-of-week prefix before parsing
+            # AppleScript returns times in the local system timezone
+            # (e.g. "July 17, 2026 at 9:00:00 AM" = 9 AM local, not 9 AM UTC).
+            # We must attach the local timezone first, then convert to UTC for ICS.
+            import time as _time  # noqa: PLC0415
+            local_tz = datetime.now(timezone.utc).astimezone().tzinfo
+
             def _parse_as_date(s: str) -> datetime:
                 # Remove "DayName, " prefix if present
                 if ", " in s:
                     s = s.split(", ", 1)[1]
-                # Try multiple formats AppleScript uses
                 for fmt in ("%B %d, %Y at %I:%M:%S %p", "%B %d, %Y at %H:%M:%S",
                             "%B %d, %Y"):
                     try:
-                        return datetime.strptime(s.strip(), fmt)
+                        # attach local tz, then convert to UTC
+                        return datetime.strptime(s.strip(), fmt) \
+                                       .replace(tzinfo=local_tz) \
+                                       .astimezone(timezone.utc)
                     except ValueError:
                         continue
                 raise ValueError(f"Cannot parse date: {s!r}")
 
-            start_dt_ev = _parse_as_date(start_s).replace(tzinfo=timezone.utc)
-            end_dt_ev   = _parse_as_date(end_s).replace(tzinfo=timezone.utc)
+            start_dt_ev = _parse_as_date(start_s)
+            end_dt_ev   = _parse_as_date(end_s)
         except Exception as exc:
             log.warning("Skipping event %r — date parse failed: %s", title, exc)
             continue
