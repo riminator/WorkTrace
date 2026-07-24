@@ -37,10 +37,19 @@ pip install pyobjc-framework-EventKit requests
 
 ### First run
 
-**1. Check Outlook is syncing to Calendar.app**
+**1. Enable Outlook → Calendar.app sync (one-time)**
 
-Open Calendar.app. You should see your Outlook events there. If not:
-- Outlook for Mac → Preferences → Sync → enable "Sync Outlook calendar with macOS Calendar"
+Outlook does not sync to Calendar.app by default. Turn this on first:
+
+1. Open **Outlook for Mac**
+2. Menu bar → **Outlook** → **Settings** (macOS) or **Preferences**
+3. Click **Sync** (or **Calendar** — the exact label depends on your Outlook version)
+4. Enable **"Sync Outlook calendar with macOS Calendar"**
+5. Quit and reopen Outlook — give it 1–2 minutes to populate Calendar.app
+
+Open **Calendar.app** and confirm your Exchange/work events are visible. You should see them under an **"Exchange"** account in the left sidebar.
+
+> If events still don't appear: Outlook → Settings → **Accounts** — confirm your Exchange account shows a connected (green) status.
 
 **2. List available calendars** (find your Outlook calendar name):
 
@@ -72,6 +81,13 @@ On first run macOS will show a permission dialog:
 > *"Terminal" wants access to your calendars*
 
 Click **OK**. This is a one-time prompt — subsequent runs are silent.
+
+If you missed it or clicked **Don't Allow**, fix it manually:
+
+1. **Apple menu** → **System Settings** (Ventura/Sonoma/Sequoia) or **System Preferences** (older macOS)
+2. **Privacy & Security** → **Calendars**
+3. Find **Terminal** in the list and toggle it **on**
+   *(If you ran the script directly with `python3`, look for **Python** instead)*
 
 **5. First-time backfill:**
 

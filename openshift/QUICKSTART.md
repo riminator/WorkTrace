@@ -78,23 +78,48 @@ After deploying, set up the local calendar sync script so events flow in automat
 
 ### macOS
 
+**Step 1 — Enable Outlook → Calendar.app sync (one-time)**
+
+Outlook does not sync to Calendar.app by default. Turn this on first:
+
+1. Open **Outlook for Mac**
+2. Menu bar → **Outlook** → **Settings** (macOS) or **Preferences**
+3. Click **Sync** (or **Calendar** — the exact label depends on your Outlook version)
+4. Enable **"Sync Outlook calendar with macOS Calendar"**
+5. Quit and reopen Outlook — give it 1–2 minutes to populate Calendar.app
+
+Open **Calendar.app** and confirm your Exchange/work events are visible. You should see them under an **"Exchange"** account in the left sidebar.
+
+> If events still don't appear: Outlook → Settings → **Accounts** — confirm your Exchange account shows a connected (green) status.
+
+**Step 2 — Grant calendar access in macOS System Settings (one-time)**
+
+The first time the sync script runs, macOS will show a permission dialog:
+
+> *"Terminal" wants access to your calendars* — click **OK**
+
+If you missed it or clicked Don't Allow:
+
+1. **Apple menu** → **System Settings** (Ventura/Sonoma/Sequoia) or **System Preferences** (older macOS)
+2. **Privacy & Security** → **Calendars**
+3. Find **Terminal** in the list and toggle it **on**
+   *(If you ran the script directly with `python3`, look for **Python** instead)*
+
+> **Sequoia note (macOS 15):** The script uses AppleScript to talk to Calendar.app directly, which avoids the EventKit TCC issue where CLI tools sometimes can't be added to the Calendars privacy list. If you ever hit that wall, make sure you're using the AppleScript-based script (the default) rather than any EventKit variant.
+
 ```bash
-# 1. Open Calendar.app — confirm your Outlook/Exchange events are there
-# 2. Install dependency
+# 3. Install dependency
 pip install requests
 
-# 3. List available calendars (find your Exchange calendar name)
+# 4. List available calendars (find your Exchange calendar name)
 python3 scripts/Sync-OutlookToWorkTrace.py --list-calendars
 
-# 4. First-run backfill
+# 5. First-run backfill
 python3 scripts/Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"
 
-# 5. From now on — a zshrc hook runs the sync once per day when you open Terminal
+# 6. From now on — a zshrc hook runs the sync once per day when you open Terminal
 # (already added during setup — see ~/.zshrc)
 ```
-
-> **Sequoia note:** The script uses AppleScript to read from Calendar.app — no EventKit TCC permission needed.
-> If you don't see your events in Calendar.app, open Outlook → Preferences → Sync → enable macOS Calendar sync.
 
 ### Windows
 

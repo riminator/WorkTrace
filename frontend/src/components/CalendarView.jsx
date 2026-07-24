@@ -344,8 +344,15 @@ Reads events from Calendar.app via AppleScript and imports them into WorkTrace.
 No Entra app, no OAuth required.
 
 Requirements: pip install requests
-Run once:     python3 Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"
-Auto-run:     add to ~/.zshrc (see instructions below)
+
+First-run setup
+  1. Outlook → Settings → Sync → enable "Sync Outlook calendar with macOS Calendar"
+     Quit and reopen Outlook, wait ~2 min, then confirm events appear in Calendar.app.
+  2. First script run: macOS will ask "Terminal wants access to your calendars" → click OK.
+     If you missed it: System Settings → Privacy & Security → Calendars → toggle Terminal on.
+  3. pip install requests
+  4. python3 Sync-OutlookToWorkTrace.py --list-calendars
+  5. python3 Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"
 """
 import argparse, io, logging, os, subprocess, sys, uuid
 from datetime import datetime, timedelta, timezone
@@ -468,16 +475,27 @@ def main():
 
 if __name__=="__main__": main()
 
-# ── Auto-run setup ─────────────────────────────────────────────────────────────
-# Add these lines to your ~/.zshrc to sync once per day when you open Terminal:
+# ── Auto-run setup (launchd — recommended) ────────────────────────────────────
+# Runs automatically at 6 AM, 12 PM, and 6 PM Mon-Fri via launchd.
+# Save this script to ~/WorkTrace-Sync/, then run:
+#
+#   cp com.worktrace.outlooksync.plist ~/Library/LaunchAgents/
+#   launchctl load ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
+#
+# ── OR: add to ~/.zshrc to sync up to 3× per day when Terminal opens ──────────
 #
 # _worktrace_sync() {
-#   local stamp="$HOME/.worktrace_last_sync"
-#   local today=$(date +%Y-%m-%d)
-#   if [[ ! -f "$stamp" ]] || [[ "$(cat $stamp)" != "$today" ]]; then
+#   local slot
+#   local h=$(date +%H)
+#   if   (( h < 12 )); then slot="AM"
+#   elif (( h < 18 )); then slot="PM"
+#   else                    slot="EVE"
+#   fi
+#   local stamp="$HOME/.worktrace_last_sync_${slot}_$(date +%Y-%m-%d)"
+#   if [[ ! -f "$stamp" ]]; then
 #     echo "[WorkTrace] Syncing calendar..."
-#     python3 ~/WorkTrace-Sync/Sync-OutlookToWorkTrace.py --days-back 7 --calendar-filter "Calendar" >> "$HOME/Library/Logs/WorkTraceSync.log" 2>&1 &
-#     echo "$today" > "$stamp"
+#     python3 ~/WorkTrace-Sync/Sync-OutlookToWorkTrace.py --days-back 1 --calendar-filter "Calendar" >> "$HOME/Library/Logs/WorkTraceSync.log" 2>&1 &
+#     touch "$stamp"
 #   fi
 # }
 # _worktrace_sync
@@ -605,11 +623,16 @@ function SyncScriptDownload({ token }) {
       {/* Instructions */}
       {platform === "mac" ? (
         <ol style={{ fontSize: 13, color: "var(--muted)", paddingLeft: 18, lineHeight: 2, marginBottom: 16 }}>
-          <li>Make sure your Outlook events appear in <strong>Calendar.app</strong></li>
+          <li>
+            <strong>Enable Outlook → Calendar.app sync (one-time):</strong> Open Outlook → menu bar <strong>Outlook → Settings</strong> → <strong>Sync</strong> → enable <em>"Sync Outlook calendar with macOS Calendar"</em>. Quit and reopen Outlook, wait ~2 min, then open <strong>Calendar.app</strong> and confirm your Exchange/work events appear under an <em>Exchange</em> account in the sidebar.
+          </li>
+          <li>
+            <strong>Grant calendar access (one-time):</strong> The first time the script runs macOS will show a dialog — <em>"Terminal wants access to your calendars"</em> — click <strong>OK</strong>. If you missed it: <strong>Apple menu → System Settings → Privacy &amp; Security → Calendars</strong> → toggle <strong>Terminal</strong> (or Python) on.
+          </li>
           <li>Install the only dependency: <code style={codeStyle}>pip install requests</code></li>
           <li>Download the script below and save it anywhere (e.g. <code style={codeStyle}>~/Downloads/</code>)</li>
-          <li>Run once: <code style={codeStyle}>python3 Sync-OutlookToWorkTrace.py --list-calendars</code></li>
-          <li>Then: <code style={codeStyle}>python3 Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"</code></li>
+          <li>List your calendars: <code style={codeStyle}>python3 Sync-OutlookToWorkTrace.py --list-calendars</code></li>
+          <li>First-run backfill: <code style={codeStyle}>python3 Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"</code></li>
           <li>For daily auto-sync, add the <code style={codeStyle}>_worktrace_sync</code> snippet (in the script comments) to your <code style={codeStyle}>~/.zshrc</code></li>
         </ol>
       ) : (

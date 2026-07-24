@@ -46,10 +46,13 @@ log = logging.getLogger(__name__)
 
 # ── Defaults (update WorkTrace URL when cluster changes) ──────────────────────
 
-# Update these two values when your cluster changes.
-# WORKTRACE_TOKEN is the same as WORKTRACE_TOKEN in ~/.bob/settings/mcp.json
-WORKTRACE_URL   = "https://knowledgebase-knowledgebase.apps.YOUR-CLUSTER.techzone.ibm.com"
-WORKTRACE_TOKEN = "YOUR-WORKTRACE-JWT-TOKEN"
+# Update these two values when your cluster changes, or set the environment
+# variables WORKTRACE_URL and WORKTRACE_TOKEN to avoid editing this file.
+# WORKTRACE_TOKEN is your Supabase JWT — copy it from WorkTrace → Settings or
+# from the WORKTRACE_TOKEN entry in ~/.bob/settings/mcp.json.
+import os as _os
+WORKTRACE_URL   = _os.environ.get("WORKTRACE_URL",   "https://<your-cluster-url>")
+WORKTRACE_TOKEN = _os.environ.get("WORKTRACE_TOKEN", "")
 
 
 # ── ICS helpers ───────────────────────────────────────────────────────────────

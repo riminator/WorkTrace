@@ -120,10 +120,11 @@ export default function HowToUse() {
               Outlook for Mac syncs its events into Calendar.app automatically.
             </p>
             <ol style={{ fontSize: 12, color: "var(--muted)", paddingLeft: 18, lineHeight: 2 }}>
-              <li>Open Calendar.app and confirm your Outlook events are visible there</li>
+              <li><strong>Enable sync (one-time):</strong> Outlook → <strong>Settings → Sync</strong> → enable <em>"Sync Outlook calendar with macOS Calendar"</em>. Quit &amp; reopen Outlook, wait ~2 min, then open <strong>Calendar.app</strong> and confirm Exchange events appear in the sidebar.</li>
+              <li><strong>Grant access (one-time):</strong> First script run shows a macOS dialog — <em>"Terminal wants access to your calendars"</em> → click <strong>OK</strong>. If missed: <strong>System Settings → Privacy &amp; Security → Calendars</strong> → toggle Terminal on.</li>
               <li>Install the dependency: <code style={code}>pip install requests</code></li>
-              <li>Test: <code style={code}>python3 scripts/Sync-OutlookToWorkTrace.py --list-calendars</code></li>
-              <li>First run: <code style={code}>python3 scripts/Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"</code></li>
+              <li>List calendars: <code style={code}>python3 scripts/Sync-OutlookToWorkTrace.py --list-calendars</code></li>
+              <li>First-run backfill: <code style={code}>python3 scripts/Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"</code></li>
               <li>Auto-run on Terminal open: already wired into <code style={code}>~/.zshrc</code> — syncs once per day silently</li>
             </ol>
             <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>

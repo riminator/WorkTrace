@@ -3,13 +3,16 @@
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   WorkTrace Outlook Sync — launchd agent for macOS
-  This runs Sync-OutlookToWorkTrace.py every weekday at 08:55 AM.
+  Runs Sync-OutlookToWorkTrace.py three times a day (6 AM, 12 PM, 6 PM)
+  on weekdays (Mon–Fri).
 
   SETUP:
-    1. Edit the ProgramArguments path below to match where you cloned WorkTrace.
-    2. Copy this file to ~/Library/LaunchAgents/
-    3. Load it: launchctl load ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
-    4. Test: launchctl start com.worktrace.outlooksync
+    1. Copy this file to ~/Library/LaunchAgents/
+       cp scripts/com.worktrace.outlooksync.plist ~/Library/LaunchAgents/
+    2. Load it:
+       launchctl load ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
+    3. Test immediately:
+       launchctl start com.worktrace.outlooksync
 
   UNINSTALL:
     launchctl unload ~/Library/LaunchAgents/com.worktrace.outlooksync.plist
@@ -22,48 +25,50 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <!-- Update this path to where you cloned WorkTrace -->
-    <string>/Users/YOUR_USERNAME/WorkTrace/scripts/worktrace-sync-launcher.sh</string>
+    <string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3</string>
+    <string>/Users/akshaymallireddy/WorkTrace/scripts/Sync-OutlookToWorkTrace.py</string>
+    <string>--days-back</string>
+    <string>1</string>
+    <string>--calendar-filter</string>
+    <string>Calendar</string>
   </array>
 
-  <!-- Run at 08:55 AM Monday–Friday -->
+  <!--
+    Run at 06:00, 12:00, and 18:00 Monday–Friday.
+    launchd fires each dict entry independently, so we list all 15 combinations
+    (5 days × 3 times).
+  -->
   <key>StartCalendarInterval</key>
   <array>
-    <dict>
-      <key>Weekday</key><integer>1</integer>
-      <key>Hour</key><integer>8</integer>
-      <key>Minute</key><integer>55</integer>
-    </dict>
-    <dict>
-      <key>Weekday</key><integer>2</integer>
-      <key>Hour</key><integer>8</integer>
-      <key>Minute</key><integer>55</integer>
-    </dict>
-    <dict>
-      <key>Weekday</key><integer>3</integer>
-      <key>Hour</key><integer>8</integer>
-      <key>Minute</key><integer>55</integer>
-    </dict>
-    <dict>
-      <key>Weekday</key><integer>4</integer>
-      <key>Hour</key><integer>8</integer>
-      <key>Minute</key><integer>55</integer>
-    </dict>
-    <dict>
-      <key>Weekday</key><integer>5</integer>
-      <key>Hour</key><integer>8</integer>
-      <key>Minute</key><integer>55</integer>
-    </dict>
+    <!-- Monday -->
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <!-- Tuesday -->
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <!-- Wednesday -->
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <!-- Thursday -->
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <!-- Friday -->
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
   </array>
 
   <!-- Write stdout/stderr to log files -->
   <key>StandardOutPath</key>
-  <string>/Users/YOUR_USERNAME/Library/Logs/WorkTraceSync.log</string>
+  <string>/Users/akshaymallireddy/Library/Logs/WorkTraceSync.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/YOUR_USERNAME/Library/Logs/WorkTraceSync-error.log</string>
+  <string>/Users/akshaymallireddy/Library/Logs/WorkTraceSync-error.log</string>
 
-  <!-- Run even if the job was missed while the machine was asleep -->
+  <!-- Catch up if the machine was asleep at a scheduled time -->
   <key>RunAtLoad</key>
   <false/>
 </dict>

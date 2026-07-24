@@ -328,7 +328,7 @@ def _insert_entries(entries: list[dict], user_id: str, conn) -> tuple[int, int]:
                     e.get("attendees") if isinstance(e.get("attendees"), str)
                         else ", ".join(e.get("attendees") or []),
                 ))
-                inserted += 1
+                inserted += cur.rowcount  # 1 if inserted, 0 if skipped by ON CONFLICT
             except Exception:
                 conn.rollback()
                 failed += 1
