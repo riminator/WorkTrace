@@ -261,17 +261,26 @@ export default function TTTManualEntry({ token }) {
           </Field>
           <Field label="Start time">
             <input type="time" className="input" value={form.startTime}
-              onChange={e => { set("startTime", e.target.value); calcDuration(e.target.value, form.endTime); }} />
+              onChange={e => { set("startTime", e.target.value); calcDuration(e.target.value, form.endTime); }}
+              style={{ borderColor: !form.startTime ? "var(--border)" : undefined }} />
           </Field>
           <Field label="End time">
             <input type="time" className="input" value={form.endTime}
-              onChange={e => { set("endTime", e.target.value); calcDuration(form.startTime, e.target.value); }} />
+              onChange={e => { set("endTime", e.target.value); calcDuration(form.startTime, e.target.value); }}
+              style={{ borderColor: !form.endTime ? "var(--border)" : undefined }} />
           </Field>
           <Field label="Duration (hrs)" required>
             <input type="number" className="input" step="0.25" min="0.25" value={form.duration}
               onChange={e => set("duration", e.target.value)} required />
           </Field>
         </div>
+
+        {/* Calendar visibility hint */}
+        {(!form.startTime || !form.endTime) && (
+          <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "7px 12px" }}>
+            ⚠️ <strong>Start and end time are needed to appear in the Calendar view.</strong> Without them this entry will only show in Time Entries.
+          </div>
+        )}
 
         {/* Row 2 — title + classify */}
         <Field label="Meeting / Task title" required>

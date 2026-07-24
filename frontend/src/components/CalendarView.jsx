@@ -254,7 +254,9 @@ export default function CalendarView({ token }) {
     setLoading(true);
     try {
       const data = await getEntries({ startDate: isoDate(weekStart), endDate: isoDate(weekEnd) }, token);
-      setEntries(data);
+      // Only show entries that have an actual start time — manual entries without
+      // a time would display as 12:00 AM or epoch which is misleading
+      setEntries(data.filter(e => e.startTime));
     } catch (_) {
       // silently fail — table shows empty
     } finally {
