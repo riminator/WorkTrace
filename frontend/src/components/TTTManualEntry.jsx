@@ -166,6 +166,15 @@ export default function TTTManualEntry({ token }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true); setError(null); setSuccess(false);
+
+    // Convert a "YYYY-MM-DD" + "HH:MM" pair (local time) to a UTC ISO string.
+    // The browser input gives local time — we must not blindly append Z (which
+    // would treat it as UTC and display it 5-6 hours early in Central Time).
+    function localToUtcIso(date, time) {
+      if (!date || !time) return null;
+      return new Date(`${date}T${time}:00`).toISOString(); // Date() parses as local, toISOString() gives UTC
+    }
+
     try {
       await createEntry({
         date:            form.date,
@@ -177,8 +186,8 @@ export default function TTTManualEntry({ token }) {
         description:     form.description || null,
         organizer:       form.organizer   || null,
         attendees:       form.attendees   || null,
-        startTime:       form.startTime ? `${form.date}T${form.startTime}:00Z` : null,
-        endTime:         form.endTime   ? `${form.date}T${form.endTime}:00Z`   : null,
+        startTime:       localToUtcIso(form.date, form.startTime),
+        endTime:         localToUtcIso(form.date, form.endTime),
         confidence:      0.75,
         status:          "logged",
       }, token);
