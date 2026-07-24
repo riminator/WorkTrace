@@ -13,6 +13,7 @@ is used to scope every DB operation so users only see their own data.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import pathlib
 import shutil
@@ -170,6 +171,43 @@ def health() -> dict:
 @app.get("/me", summary="Return the current user's id and role flags")
 def me(current_user: UserInfo = Depends(get_current_user)) -> dict:
     return {"user_id": current_user.user_id, "is_admin": current_user.is_admin}
+
+
+@app.get("/me/sync-token", summary="Issue a long-lived HS256 JWT for use in local sync scripts")
+def me_sync_token(current_user: UserInfo = Depends(get_current_user)) -> dict:
+    """
+    Returns a JWT that expires in 10 years, signed with SUPABASE_JWT_SECRET.
+    Safe to embed in a local sync script — it is scoped to this user only.
+    """
+    import hmac, hashlib, base64, json as _json  # noqa: E401
+
+    from kb.config import SUPABASE_JWT_SECRET
+
+    if not SUPABASE_JWT_SECRET:
+        raise HTTPException(status_code=503, detail="JWT secret not configured.")
+
+    now = int(dt.datetime.now(dt.timezone.utc).timestamp())
+    header  = {"alg": "HS256", "typ": "JWT"}
+    payload = {
+        "sub":  current_user.user_id,
+        "role": "authenticated",
+        "iat":  now,
+        "exp":  now + 10 * 365 * 24 * 3600,  # 10 years
+    }
+
+    def _b64(data: dict) -> str:
+        return base64.urlsafe_b64encode(
+            _json.dumps(data, separators=(",", ":")).encode()
+        ).rstrip(b"=").decode()
+
+    header_b64  = _b64(header)
+    payload_b64 = _b64(payload)
+    signing_input = f"{header_b64}.{payload_b64}".encode()
+    sig = hmac.new(SUPABASE_JWT_SECRET.encode(), signing_input, hashlib.sha256).digest()  # type: ignore[attr-defined]
+    sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+
+    token = f"{header_b64}.{payload_b64}.{sig_b64}"
+    return {"token": token, "expires_in_years": 10}
 
 
 @app.get("/admin/users", summary="List all distinct users (admin only)")

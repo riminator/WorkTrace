@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { getEntries } from "../tttApi";
-import { importICS } from "../tttApi";
+import { getEntries, importICS } from "../tttApi";
 import { useDropzone } from "react-dropzone";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -312,6 +313,9 @@ export default function CalendarView({ token }) {
         </div>
       </div>
 
+      {/* ── sync script download ── */}
+      <SyncScriptDownload token={token} />
+
       {/* ── ICS import at the bottom ── */}
       <div className="card">
         <IcsDropzone token={token} onImported={load} />
@@ -325,3 +329,312 @@ export default function CalendarView({ token }) {
     </div>
   );
 }
+
+// ── Sync script download ──────────────────────────────────────────────────────
+
+const WORKTRACE_URL = window.location.origin;
+
+function makeMacScript(syncToken) {
+  return `#!/usr/bin/env python3
+"""
+WorkTrace Calendar Sync — macOS
+Reads events from Calendar.app via AppleScript and imports them into WorkTrace.
+No Entra app, no OAuth required.
+
+Requirements: pip install requests
+Run once:     python3 Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"
+Auto-run:     add to ~/.zshrc (see instructions below)
+"""
+import argparse, io, logging, os, subprocess, sys, uuid
+from datetime import datetime, timedelta, timezone
+
+LOG_FILE = os.path.expanduser("~/Library/Logs/WorkTraceSync.log")
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+logging.basicConfig(level=logging.INFO,
+  format="[%(asctime)s] [%(levelname)s] %(message)s",
+  handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(LOG_FILE, encoding="utf-8")])
+log = logging.getLogger(__name__)
+
+WORKTRACE_URL   = "${WORKTRACE_URL}"
+WORKTRACE_TOKEN = "${syncToken}"
+
+def _run_applescript(script):
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if r.returncode != 0: raise RuntimeError(r.stderr.strip())
+    return r.stdout.strip()
+
+def _ics_dt(dt): return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+def _ics_escape(t): return (t or "").replace("\\\\","\\\\\\\\").replace(";","\\\\;").replace(",","\\\\,").replace("\\n","\\\\n").replace("\\r","\\\\n")
+def _ics_fold(line):
+    enc=line.encode("utf-8")
+    if len(enc)<=75: return line
+    parts,pos,first=[],0,True
+    while pos<len(enc):
+        lim=75 if first else 74; chunk=enc[pos:pos+lim]
+        while len(chunk)>1 and (chunk[-1]&0xC0)==0x80: chunk=chunk[:-1]
+        parts.append(("" if first else " ")+chunk.decode("utf-8")); pos+=len(chunk); first=False
+    return "\\r\\n".join(parts)
+
+def fetch_events(days_back, days_forward, cal_filter=None):
+    now=datetime.now(); start=(now-timedelta(days=days_back)).strftime("%-m/%-d/%Y"); end=(now+timedelta(days=days_forward)).strftime("%-m/%-d/%Y")
+    if cal_filter:
+        cond=" or ".join(f'name of cal is "{c}"' for c in cal_filter)
+        clause=f"if ({cond}) then"
+    else: clause="if true then"
+    script=f"""
+set startDate to date "{start}"
+set endDate to date "{end}"
+set output to ""
+tell application "Calendar"
+    repeat with cal in calendars
+        {clause}
+            set evts to (every event of cal whose start date >= startDate and start date <= endDate)
+            repeat with e in evts
+                set t to summary of e
+                set sd to start date of e
+                set ed to end date of e
+                set loc to ""; try; set loc to location of e; if loc is missing value then set loc to ""; end try
+                set desc to ""; try; set desc to description of e; if desc is missing value then set desc to ""; end try
+                set evtUid to uid of e
+                set output to output & evtUid & "|" & t & "|" & (sd as string) & "|" & (ed as string) & "|" & loc & "|" & desc & "\\\\n"
+            end repeat
+        end if
+    end repeat
+end tell
+return output"""
+    raw=_run_applescript(script)
+    if not raw: return []
+    events=[]
+    for line in raw.strip().splitlines():
+        parts=line.split("|",5)
+        if len(parts)<4: continue
+        uid,title,start_s,end_s=parts[0],parts[1],parts[2],parts[3]
+        desc=parts[5] if len(parts)>5 else ""
+        def _parse(s):
+            if ", " in s: s=s.split(", ",1)[1]
+            for fmt in ("%B %d, %Y at %I:%M:%S %p","%B %d, %Y at %H:%M:%S","%B %d, %Y"):
+                try: return datetime.strptime(s.strip(),fmt)
+                except: pass
+            raise ValueError(f"Cannot parse: {s!r}")
+        try:
+            s=_parse(start_s).replace(tzinfo=timezone.utc); en=_parse(end_s).replace(tzinfo=timezone.utc)
+        except Exception as ex: log.warning("Skip %r: %s",title,ex); continue
+        events.append({"uid":uid or str(uuid.uuid4()),"summary":title or "(No title)","start":s,"end":en,"description":desc[:500]})
+    return events
+
+def list_calendars():
+    raw=_run_applescript('tell application "Calendar"\\n    set output to ""\\n    repeat with cal in calendars\\n        set output to output & name of cal & "\\\\n"\\n    end repeat\\n    return output\\nend tell')
+    print("\\nAvailable calendars:")
+    for n in raw.strip().splitlines():
+        if n: print(f"  {n}")
+
+def build_ics(events):
+    lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//WorkTrace Sync//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"]
+    for ev in events:
+        lines+=["BEGIN:VEVENT",f"UID:{ev['uid']}",_ics_fold(f"SUMMARY:{_ics_escape(ev['summary'])}"),
+                f"DTSTART:{_ics_dt(ev['start'])}",f"DTEND:{_ics_dt(ev['end'])}"]
+        if ev.get("description"): lines.append(_ics_fold(f"DESCRIPTION:{_ics_escape(ev['description'])}"))
+        lines.append("END:VEVENT")
+    lines.append("END:VCALENDAR")
+    return "\\r\\n".join(lines)
+
+def post_ics(ics, url, tok):
+    import requests
+    r=requests.post(url.rstrip("/")+"/api/ttt/import/ics",
+        headers={"Authorization":f"Bearer {tok}"},
+        files={"file":("calendar.ics",io.BytesIO(ics.encode("utf-8")),"text/calendar")},timeout=30)
+    r.raise_for_status(); return r.json()
+
+def main():
+    p=argparse.ArgumentParser()
+    p.add_argument("--days-back",type=int,default=7)
+    p.add_argument("--days-forward",type=int,default=1)
+    p.add_argument("--calendar-filter",type=str,default=None)
+    p.add_argument("--list-calendars",action="store_true")
+    p.add_argument("--whatif",action="store_true")
+    args=p.parse_args()
+    if args.list_calendars: list_calendars(); return
+    log.info("Starting WorkTrace calendar sync (days_back=%d)",args.days_back)
+    cal_filter=[c.strip() for c in args.calendar_filter.split(",")] if args.calendar_filter else None
+    events=fetch_events(args.days_back,args.days_forward,cal_filter)
+    log.info("Fetched %d events",len(events))
+    if not events: log.warning("No events found."); return
+    ics=build_ics(events)
+    if args.whatif: print(ics); return
+    result=post_ics(ics,WORKTRACE_URL,WORKTRACE_TOKEN)
+    log.info("SUCCESS — imported %d, failed %d",result.get("count",0),result.get("failed",0))
+
+if __name__=="__main__": main()
+
+# ── Auto-run setup ─────────────────────────────────────────────────────────────
+# Add these lines to your ~/.zshrc to sync once per day when you open Terminal:
+#
+# _worktrace_sync() {
+#   local stamp="$HOME/.worktrace_last_sync"
+#   local today=$(date +%Y-%m-%d)
+#   if [[ ! -f "$stamp" ]] || [[ "$(cat $stamp)" != "$today" ]]; then
+#     echo "[WorkTrace] Syncing calendar..."
+#     python3 ~/WorkTrace-Sync/Sync-OutlookToWorkTrace.py --days-back 7 --calendar-filter "Calendar" >> "$HOME/Library/Logs/WorkTraceSync.log" 2>&1 &
+#     echo "$today" > "$stamp"
+#   fi
+# }
+# _worktrace_sync
+`;
+}
+
+function makeWindowsScript(syncToken) {
+  return `#Requires -Version 5.1
+<#
+.SYNOPSIS  WorkTrace Calendar Sync — Windows
+.DESCRIPTION
+  Reads Outlook calendar events via COM automation and imports them into WorkTrace.
+  No Entra app, no OAuth required.
+  Run: .\\Sync-OutlookToWorkTrace.ps1
+  Schedule: import WorkTraceSync-TaskScheduler.xml into Task Scheduler
+#>
+param(
+    [int]    $DaysBack    = 7,
+    [int]    $DaysForward = 1,
+    [string] $WorkTraceUrl = "${WORKTRACE_URL}",
+    [string] $Token        = "${syncToken}",
+    [string] $LogFile      = "$env:TEMP\\WorkTraceSync.log",
+    [switch] $WhatIf
+)
+Set-StrictMode -Version Latest; $ErrorActionPreference = "Stop"
+function Write-Log { param([string]$m,[string]$l="INFO"); $line="[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$l] $m"; Write-Host $line; Add-Content -Path $LogFile -Value $line -Encoding UTF8 }
+function Format-IcsDateTime { param([System.DateTime]$dt); return $dt.ToUniversalTime().ToString("yyyyMMdd\\THHmmss\\Z") }
+function Escape-IcsText { param([string]$t); if(!$t){return ""}; $t=$t-replace"\\\\","\\\\\\\\"; $t=$t-replace";","\\\\;"; $t=$t-replace",","\\\\,"; $t=$t-replace"\`r\`n","\\\\n"; $t=$t-replace"\`n","\\\\n"; return $t }
+
+Write-Log "Starting WorkTrace calendar sync (DaysBack=$DaysBack)"
+try { $outlook=[System.Runtime.InteropServices.Marshal]::GetActiveObject("Outlook.Application") }
+catch { $outlook=New-Object -ComObject Outlook.Application }
+$ns=$outlook.GetNamespace("MAPI"); $cal=$ns.GetDefaultFolder(9)
+$items=$cal.Items; $items.IncludeRecurrences=$true; $items.Sort("[Start]")
+$start=(Get-Date).Date.AddDays(-$DaysBack); $end=(Get-Date).Date.AddDays($DaysForward+1)
+$filtered=$items.Restrict("[Start] >= '$(${start}.ToString('MM/dd/yyyy HH:mm'))' AND [Start] < '$(${end}.ToString('MM/dd/yyyy HH:mm'))'")
+Write-Log "Found $($filtered.Count) items"
+$icsLines=[System.Collections.Generic.List[string]]::new()
+$icsLines.AddRange([string[]]@("BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//WorkTrace Sync//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"))
+$count=0
+foreach($item in $filtered){
+  if($item.Class -ne 26){continue}
+  if($item.ResponseStatus -eq 4){continue}
+  $uid=$item.GlobalAppointmentID; if(!$uid){$uid=[System.Guid]::NewGuid().ToString()}
+  $summary=Escape-IcsText $item.Subject; $org=""; try{$org=$item.Organizer}catch{}
+  $icsLines.Add("BEGIN:VEVENT"); $icsLines.Add("UID:$uid")
+  $icsLines.Add("SUMMARY:$summary"); $icsLines.Add("DTSTART:$(Format-IcsDateTime $item.Start)")
+  $icsLines.Add("DTEND:$(Format-IcsDateTime $item.End)")
+  if($org){$icsLines.Add("ORGANIZER;CN=$org:mailto:$org")}
+  $icsLines.Add("END:VEVENT"); $count++
+}
+$icsLines.Add("END:VCALENDAR")
+$icsContent=$icsLines -join "\`r\`n"
+Write-Log "Built ICS with $count events"
+if($count -eq 0){Write-Log "Nothing to import."; exit 0}
+if($WhatIf){Write-Host $icsContent; exit 0}
+$boundary=[System.Guid]::NewGuid().ToString("N"); $CRLF="\`r\`n"
+$header="--$boundary$CRLF\Content-Disposition: form-data; name=\`"file\`"; filename=\`"calendar.ics\`"$CRLF\Content-Type: text/calendar$CRLF$CRLF"
+$hBytes=[System.Text.Encoding]::UTF8.GetBytes($header)
+$iBytes=[System.Text.Encoding]::UTF8.GetBytes($icsContent)
+$fBytes=[System.Text.Encoding]::UTF8.GetBytes("$CRLF--$boundary--$CRLF")
+$body=New-Object byte[]($hBytes.Length+$iBytes.Length+$fBytes.Length)
+[System.Buffer]::BlockCopy($hBytes,0,$body,0,$hBytes.Length)
+[System.Buffer]::BlockCopy($iBytes,0,$body,$hBytes.Length,$iBytes.Length)
+[System.Buffer]::BlockCopy($fBytes,0,$body,$hBytes.Length+$iBytes.Length,$fBytes.Length)
+$resp=Invoke-RestMethod -Uri "$($WorkTraceUrl.TrimEnd('/'))/api/ttt/import/ics" -Method POST -Headers @{"Authorization"="Bearer $Token";"Content-Type"="multipart/form-data; boundary=$boundary"} -Body $body
+Write-Log "SUCCESS — imported $($resp.count) entries, $($resp.failed) failed"
+`;
+}
+
+function SyncScriptDownload({ token }) {
+  const [platform,  setPlatform]  = useState("mac");
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState(null);
+  const [copied,    setCopied]    = useState(false);
+
+  async function handleDownload() {
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/me/sync-token`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const { token: syncToken } = await res.json();
+
+      const isMac = platform === "mac";
+      const content  = isMac ? makeMacScript(syncToken) : makeWindowsScript(syncToken);
+      const filename = isMac ? "Sync-OutlookToWorkTrace.py" : "Sync-OutlookToWorkTrace.ps1";
+      const mime     = isMac ? "text/x-python" : "text/plain";
+
+      const blob = new Blob([content], { type: mime });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2 className="section-title" style={{ marginBottom: 6 }}>📥 Download Sync Script</h2>
+      <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16, lineHeight: 1.6 }}>
+        Download a pre-configured script that automatically imports your Outlook / Teams calendar events
+        into WorkTrace every day. Your personal token is already baked in — just download, run once, and you're done.
+      </p>
+
+      {/* Platform picker */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[["mac", "🍎 macOS"], ["windows", "🪟 Windows"]].map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => setPlatform(val)}
+            className={`btn ${platform === val ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontSize: 13 }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Instructions */}
+      {platform === "mac" ? (
+        <ol style={{ fontSize: 13, color: "var(--muted)", paddingLeft: 18, lineHeight: 2, marginBottom: 16 }}>
+          <li>Make sure your Outlook events appear in <strong>Calendar.app</strong></li>
+          <li>Install the only dependency: <code style={codeStyle}>pip install requests</code></li>
+          <li>Download the script below and save it anywhere (e.g. <code style={codeStyle}>~/Downloads/</code>)</li>
+          <li>Run once: <code style={codeStyle}>python3 Sync-OutlookToWorkTrace.py --list-calendars</code></li>
+          <li>Then: <code style={codeStyle}>python3 Sync-OutlookToWorkTrace.py --days-back 30 --calendar-filter "Calendar"</code></li>
+          <li>For daily auto-sync, add the <code style={codeStyle}>_worktrace_sync</code> snippet (in the script comments) to your <code style={codeStyle}>~/.zshrc</code></li>
+        </ol>
+      ) : (
+        <ol style={{ fontSize: 13, color: "var(--muted)", paddingLeft: 18, lineHeight: 2, marginBottom: 16 }}>
+          <li>Outlook for Windows must be installed and open</li>
+          <li>Download the script below and save it anywhere</li>
+          <li>Right-click → Run with PowerShell, or: <code style={codeStyle}>.\Sync-OutlookToWorkTrace.ps1 -DaysBack 7</code></li>
+          <li>To schedule daily: open Task Scheduler → Create Basic Task → point it at this script</li>
+        </ol>
+      )}
+
+      <button
+        className="btn btn-primary"
+        onClick={handleDownload}
+        disabled={loading}
+        style={{ fontSize: 13 }}
+      >
+        {loading ? "Generating…" : `Download ${platform === "mac" ? ".py" : ".ps1"} script`}
+      </button>
+
+      {error && <p style={{ color: "var(--danger)", fontSize: 12, marginTop: 8 }}>❌ {error}</p>}
+
+      <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12, lineHeight: 1.6 }}>
+        The script contains a personal token scoped to your account. Keep it private — do not share it or commit it to a repo.
+      </p>
+    </div>
+  );
+}
+
+const codeStyle = { fontFamily: "monospace", fontSize: 11, background: "var(--surface)", padding: "1px 5px", borderRadius: 3, border: "1px solid var(--border)" };
