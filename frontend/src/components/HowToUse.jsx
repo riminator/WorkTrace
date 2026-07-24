@@ -32,7 +32,7 @@ export default function HowToUse() {
           <GuideItem
             icon="📅"
             title="Calendar"
-            description={<>Automatically sync your Outlook (or any Exchange / Google) calendar into WorkTrace. Drop an <strong>.ics</strong> file exported from any calendar app, or use the built-in <strong>auto-sync script</strong> on macOS / Windows so entries appear every morning with no manual work. Each calendar event becomes a time entry — duration, project code, and task type are auto-classified from the event title.</>}
+            description={<>A <strong>week-view calendar</strong> showing all your imported events as colour-coded blocks. Click any event to see full details — title, time, duration, project, organizer, and notes. Navigate weeks with the ‹ › arrows. An .ics drop zone at the bottom lets you import manually, and the auto-sync script keeps it updated daily with no manual work.</>}
           />
           <GuideItem
             icon="📥"
