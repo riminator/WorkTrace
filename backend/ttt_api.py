@@ -39,6 +39,19 @@ from kb.config import TTT_DATABASE_URL, TTT_PGSSL
 
 router = APIRouter(prefix="/ttt", tags=["ttt"])
 
+# ── Schema bootstrap ──────────────────────────────────────────────────────────
+
+def _ensure_tombstone_table(conn) -> None:
+    """Create calendar_tombstones if it doesn't exist yet."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_tombstones (
+                id      TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL
+            )
+        """)
+    conn.commit()
+
 # ── DB connection ─────────────────────────────────────────────────────────────
 
 def _get_conn():
@@ -305,7 +318,14 @@ def _deterministic_id(user_id: str, meeting_title: str, start_time: str | None) 
 
 
 def _insert_entries(entries: list[dict], user_id: str, conn) -> tuple[int, int]:
-    """Bulk-insert parsed entries. Returns (inserted, failed)."""
+    """Bulk-insert parsed entries. Returns (inserted, failed).
+    Skips any entry whose deterministic ID has been tombstoned (user deleted it)."""
+    _ensure_tombstone_table(conn)
+    # Load this user's tombstones once up front
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM calendar_tombstones WHERE user_id = %s", (user_id,))
+        tombstones = {row[0] for row in cur.fetchall()}
+
     inserted = failed = 0
     with conn.cursor() as cur:
         for e in entries:
@@ -315,6 +335,8 @@ def _insert_entries(entries: list[dict], user_id: str, conn) -> tuple[int, int]:
                     e.get("meetingTitle", ""),
                     e.get("startTime"),
                 )
+                if entry_id in tombstones:
+                    continue  # user explicitly deleted this event — never re-import
                 cur.execute("""
                     INSERT INTO time_entries
                         (id, user_id, project_code, task_type, duration_minutes,
@@ -430,6 +452,7 @@ def bulk_delete_entries(
                     )
                 deleted += cur.rowcount
         conn.commit()
+        _tombstone_ids(req.ids, current_user.user_id, conn)
         return {"deletedCount": deleted, "totalRequested": len(req.ids)}
     finally:
         conn.close()
@@ -535,6 +558,18 @@ def update_entry(
         conn.close()
 
 
+def _tombstone_ids(ids: list[str], user_id: str, conn) -> None:
+    """Record deleted entry IDs so the calendar sync never re-imports them."""
+    _ensure_tombstone_table(conn)
+    with conn.cursor() as cur:
+        for eid in ids:
+            cur.execute(
+                "INSERT INTO calendar_tombstones (id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (eid, user_id),
+            )
+    conn.commit()
+
+
 @router.delete("/entries/{entry_id}", status_code=204)
 def delete_entry(
     entry_id: str,
@@ -550,6 +585,7 @@ def delete_entry(
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Entry not found.")
         conn.commit()
+        _tombstone_ids([entry_id], current_user.user_id, conn)
     finally:
         conn.close()
 
