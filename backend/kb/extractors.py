@@ -188,6 +188,14 @@ _SUFFIX_MAP: dict[str, str] = {
     ".tiff": "image",
     ".tif": "image",
     ".webp": "image",
+    # audio / video — transcribed via Whisper before chunking
+    ".mp3":  "audio",
+    ".mp4":  "audio",
+    ".mpeg": "audio",
+    ".mpga": "audio",
+    ".m4a":  "audio",
+    ".wav":  "audio",
+    ".webm": "audio",
 }
 
 _TEXT_SUFFIXES = {
@@ -218,6 +226,15 @@ def extract(path: pathlib.Path) -> tuple[str, list[str], dict]:
 
     if file_type == "text":
         chunks, meta = extract_txt(path)
+    elif file_type == "audio":
+        from kb.transcriber import transcribe  # noqa: PLC0415 — lazy to avoid circular import
+        transcript = transcribe(path)
+        # Run the same metadata extraction as plain-text meeting notes
+        meta   = extract_meeting_metadata(transcript)
+        prefix = _build_header_prefix(meta)
+        chunks = _chunk_text(transcript)
+        if prefix:
+            chunks = [prefix + c for c in chunks]
     else:
         dispatch = {
             "pdf": extract_pdf,

@@ -38,6 +38,12 @@ export default function MeetingUpload({ token }) {
       "text/*": [".txt", ".md", ".vtt", ".srt"],
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "audio/mpeg": [".mp3", ".mpga"],
+      "audio/mp4": [".m4a"],
+      "audio/wav": [".wav"],
+      "audio/webm": [".webm"],
+      "video/mp4": [".mp4"],
+      "video/mpeg": [".mpeg"],
     },
   });
 
@@ -103,8 +109,8 @@ export default function MeetingUpload({ token }) {
       <div className="card">
         <h2 className="section-title">📋 Upload Meeting Notes</h2>
         <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 20 }}>
-          Upload a meeting transcript or notes file. It will be indexed into the knowledge base
-          and a time entry will be pushed to the Time Task Tracker automatically.
+          Upload a meeting transcript, notes file, or <strong>audio/video recording</strong>. It will be
+          indexed into the knowledge base and a time entry will be pushed to the Time Task Tracker automatically.
         </p>
 
         {/* Dropzone */}
@@ -119,8 +125,8 @@ export default function MeetingUpload({ token }) {
           ) : (
             <>
               <div className="dropzone-icon">🎙️</div>
-              <div>Drop meeting notes or transcript here, or click to select</div>
-              <div className="dropzone-hint">TXT, MD, VTT, SRT, PDF, DOCX</div>
+              <div>Drop meeting notes, transcript, or recording here, or click to select</div>
+              <div className="dropzone-hint">TXT · MD · VTT · SRT · PDF · DOCX · MP4 · M4A · MP3 · WAV · WEBM</div>
             </>
           )}
         </div>
@@ -242,7 +248,7 @@ export default function MeetingUpload({ token }) {
             </strong>
             <div style={{ marginTop: 4, fontSize: 12 }}>
               {status === "ingesting"
-                ? "Extracting text, creating embeddings, storing in knowledge base."
+                ? "Extracting text, creating embeddings, storing in knowledge base. Audio/video files will be transcribed first — this may take up to 60 seconds."
                 : mode === "agent"
                   ? "Running: search KB → look up history → classify → synthesise → push to TTT. This may take 30–90 seconds."
                   : "Running RAG over the indexed content and pushing to Time Task Tracker. This may take 30–60 seconds."}

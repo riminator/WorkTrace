@@ -8,10 +8,12 @@ FROM python:3.11-slim
 #   libpq-dev      — psycopg2-binary
 #   tesseract-ocr  — pytesseract (document extraction)
 #   libmagic1      — python-magic (file type detection)
+#   ffmpeg         — audio extraction from video files (mp4 → m4a) for Whisper
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     tesseract-ocr \
     libmagic1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

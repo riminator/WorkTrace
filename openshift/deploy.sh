@@ -187,6 +187,8 @@ oc create secret generic knowledgebase-secrets \
   --from-literal=RAG_TOP_K="$RAG_TOP_K" \
   --from-literal=USE_LANGCHAIN="${USE_LANGCHAIN:-false}" \
   --from-literal=ADMIN_USER_IDS="${ADMIN_USER_IDS:-}" \
+  --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
+  --from-literal=OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://api.groq.com/openai/v1}" \
   "${LLM_ARGS[@]}" \
   --dry-run=client -o yaml | oc apply -f -
 echo "  ✓ Secret applied"
