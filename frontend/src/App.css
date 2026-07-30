@@ -25,6 +25,21 @@
   color-scheme: light;
 }
 
+/* ── Calendar light-mode overrides ───────────────────────────── */
+/* Give the calendar grid a clean white/light-grey look in light mode */
+:root {
+  --cal-bg:        #ffffff;
+  --cal-surface:   #f8f9fb;
+  --cal-border:    #e2e5ea;
+  --cal-border-sub:#f0f2f5;
+}
+[data-theme="dark"] {
+  --cal-bg:        #1a1a1a;
+  --cal-surface:   #141414;
+  --cal-border:    #2d2d2d;
+  --cal-border-sub:#242424;
+}
+
 /* ── Design tokens — dark ─────────────────────────────────────── */
 [data-theme="dark"] {
   --bg:           #1a1a1a;

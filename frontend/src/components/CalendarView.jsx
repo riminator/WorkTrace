@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getEntries, importICS } from "../tttApi";
 import { useDropzone } from "react-dropzone";
+import { useTheme } from "../context/ThemeContext";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,19 +36,18 @@ function fmtDuration(mins) {
   return `${h}h ${m}m`;
 }
 
-// Teams-style dark purple/blue palette per task type
-const TASK_COLORS = {
-  meeting:     { bg: "#444791", border: "#6264a7", text: "#fff" },
-  development: { bg: "#237b4b", border: "#33a869", text: "#fff" },
-  planning:    { bg: "#8b6200", border: "#d19f00", text: "#fff" },
-  review:      { bg: "#7719aa", border: "#a34bcc", text: "#fff" },
-  admin:       { bg: "#b43f35", border: "#d4574c", text: "#fff" },
-  learning:    { bg: "#c65000", border: "#e97b2e", text: "#fff" },
-  other:       { bg: "#3d5266", border: "#6b8099", text: "#fff" },
-};
-
-function taskColor(type) {
-  return TASK_COLORS[type] || TASK_COLORS.other;
+// taskColor() is now a hook-free helper — components call useTheme().getTaskColor(type)
+// This stub stays for the popover which is rendered outside component scope
+function taskColorFallback(type) {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  const map = dark ? {
+    meeting: { bg: "#444791", border: "#6264a7", text: "#fff" },
+    other:   { bg: "#3d5266", border: "#6b8099", text: "#fff" },
+  } : {
+    meeting: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+    other:   { bg: "#f1f5f9", border: "#64748b", text: "#334155" },
+  };
+  return map[type] || map.other;
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -81,8 +81,8 @@ function heightPx(durationMins) {
 
 // ── Event block (positioned absolutely in time grid) ─────────────────────────
 
-function EventBlock({ entry, onSelect, colCount = 1, colIndex = 0 }) {
-  const c = taskColor(entry.taskType);
+function EventBlock({ entry, onSelect, colCount = 1, colIndex = 0, getColor }) {
+  const c = getColor(entry.taskType);
   const startMins = minutesSinceMidnight(entry.startTime);
   if (startMins === null) return null;
 
@@ -162,7 +162,7 @@ function layoutEvents(entries) {
 
 // ── Day column (time-grid) ────────────────────────────────────────────────────
 
-function DayColumn({ date, entries, today, onSelect }) {
+function DayColumn({ date, entries, today, onSelect, getColor }) {
   const iso     = isoDate(date);
   const isToday = iso === isoDate(today);
   const dayEntries = entries.filter(e => e.date === iso && e.startTime);
@@ -175,12 +175,12 @@ function DayColumn({ date, entries, today, onSelect }) {
   const nowTop     = topPct(nowMins);
 
   return (
-    <div style={{ flex: 1, minWidth: 0, borderRight: "1px solid #2d2d2d", position: "relative" }}>
+    <div style={{ flex: 1, minWidth: 0, borderRight: "1px solid var(--cal-border)", position: "relative" }}>
       {/* hour lines */}
       {Array.from({ length: TOTAL_HOURS }, (_, i) => (
         <div key={i} style={{
           position: "absolute", top: i * HOUR_HEIGHT, left: 0, right: 0,
-          borderTop: "1px solid #2d2d2d", pointerEvents: "none",
+          borderTop: "1px solid var(--cal-border)", pointerEvents: "none",
         }} />
       ))}
 
@@ -188,7 +188,7 @@ function DayColumn({ date, entries, today, onSelect }) {
       {Array.from({ length: TOTAL_HOURS }, (_, i) => (
         <div key={`h${i}`} style={{
           position: "absolute", top: i * HOUR_HEIGHT + HOUR_HEIGHT / 2, left: 0, right: 0,
-          borderTop: "1px dashed #242424", pointerEvents: "none",
+          borderTop: "1px dashed var(--cal-border-sub)", pointerEvents: "none",
         }} />
       ))}
 
@@ -196,18 +196,18 @@ function DayColumn({ date, entries, today, onSelect }) {
       {showNowBar && (
         <div style={{
           position: "absolute", top: nowTop, left: 0, right: 0,
-          borderTop: "2px solid #6264a7", zIndex: 3, pointerEvents: "none",
+          borderTop: "2px solid var(--accent)", zIndex: 3, pointerEvents: "none",
         }}>
           <div style={{
             position: "absolute", left: -5, top: -5,
-            width: 9, height: 9, borderRadius: "50%", background: "#6264a7",
+            width: 9, height: 9, borderRadius: "50%", background: "var(--accent)",
           }} />
         </div>
       )}
 
       {/* events */}
       {laid.map(({ entry, colIndex, colCount }) => (
-        <EventBlock key={entry.id} entry={entry} onSelect={onSelect} colIndex={colIndex} colCount={colCount} />
+        <EventBlock key={entry.id} entry={entry} onSelect={onSelect} colIndex={colIndex} colCount={colCount} getColor={getColor} />
       ))}
     </div>
   );
@@ -215,22 +215,22 @@ function DayColumn({ date, entries, today, onSelect }) {
 
 // ── Event detail popover ──────────────────────────────────────────────────────
 
-function EventPopover({ entry, onClose }) {
-  const c = taskColor(entry.taskType);
+function EventPopover({ entry, onClose, getColor }) {
+  const c = getColor(entry.taskType);
   return (
     <div
       style={{ position: "fixed", inset: 0, zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
       onClick={onClose}
     >
       <div
-        style={{ background: "#1f1f1f", borderRadius: 8, padding: 20, maxWidth: 380, width: "90%", borderTop: `3px solid ${c.border}`, boxShadow: "0 8px 32px rgba(0,0,0,0.5)", color: "#fff" }}
+        style={{ background: "var(--bg)", borderRadius: 8, padding: 20, maxWidth: 380, width: "90%", borderTop: `3px solid ${c.border}`, boxShadow: "0 8px 32px rgba(0,0,0,0.35)", color: "var(--text)", border: "1px solid var(--border)" }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.4, flex: 1, marginRight: 8 }}>{entry.meetingTitle}</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#aaa", lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--muted)", lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13, color: "#ccc" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13, color: "var(--text-2)" }}>
           <PR label="📅 Date"     value={new Date(entry.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} />
           <PR label="🕐 Time"     value={entry.startTime ? `${fmtTime(entry.startTime)} – ${fmtTime(entry.endTime)}` : "—"} />
           <PR label="⏱ Duration" value={fmtDuration(entry.durationMinutes)} />
@@ -322,6 +322,7 @@ export default function CalendarView({ token }) {
   const [loading,   setLoading]   = useState(false);
   const [selected,  setSelected]  = useState(null);
   const scrollRef = useRef(null);
+  const { getTaskColor } = useTheme();
 
   const weekEnd = addDays(weekStart, 6);
 
@@ -358,35 +359,35 @@ export default function CalendarView({ token }) {
   })();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", minHeight: 500, background: "var(--surface)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", minHeight: 500, background: "var(--cal-surface)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--cal-border)" }}>
 
       {/* ── toolbar ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#1c1c1c", borderBottom: "1px solid #2d2d2d", flexShrink: 0, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--cal-bg)", borderBottom: "1px solid var(--cal-border)", flexShrink: 0, flexWrap: "wrap" }}>
         <button
           onClick={() => setWeekStart(startOfWeek(today))}
-          style={{ padding: "4px 12px", fontSize: 12, fontWeight: 600, background: "#292929", border: "1px solid #3d3d3d", borderRadius: 4, color: "#e0e0e0", cursor: "pointer" }}
+          style={{ padding: "4px 12px", fontSize: 12, fontWeight: 600, background: "var(--surface-2)", border: "1px solid var(--cal-border)", borderRadius: 4, color: "var(--text)", cursor: "pointer" }}
         >
           Today
         </button>
         <div style={{ display: "flex", gap: 2 }}>
           <button
             onClick={() => setWeekStart(w => addDays(w, -7))}
-            style={{ padding: "4px 9px", background: "#292929", border: "1px solid #3d3d3d", borderRadius: "4px 0 0 4px", color: "#ccc", cursor: "pointer", fontSize: 14 }}
+            style={{ padding: "4px 9px", background: "var(--surface-2)", border: "1px solid var(--cal-border)", borderRadius: "4px 0 0 4px", color: "var(--text-2)", cursor: "pointer", fontSize: 14 }}
           >‹</button>
           <button
             onClick={() => setWeekStart(w => addDays(w, 7))}
-            style={{ padding: "4px 9px", background: "#292929", border: "1px solid #3d3d3d", borderLeft: "none", borderRadius: "0 4px 4px 0", color: "#ccc", cursor: "pointer", fontSize: 14 }}
+            style={{ padding: "4px 9px", background: "var(--surface-2)", border: "1px solid var(--cal-border)", borderLeft: "none", borderRadius: "0 4px 4px 0", color: "var(--text-2)", cursor: "pointer", fontSize: 14 }}
           >›</button>
         </div>
-        <span style={{ fontWeight: 700, fontSize: 14, color: "#e8e8e8" }}>{rangeLabel}</span>
-        <span style={{ fontSize: 11, color: "#555", marginLeft: 2 }}>Work week</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{rangeLabel}</span>
+        <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>Work week</span>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-          {loading && <span style={{ fontSize: 12, color: "#666" }}>Loading…</span>}
+          {loading && <span style={{ fontSize: 12, color: "var(--muted)" }}>Loading…</span>}
           {!loading && (
-            <span style={{ fontSize: 12, color: "#888" }}>
-              <span style={{ color: "#ccc", fontWeight: 600 }}>{entries.length}</span> events ·{" "}
-              <span style={{ color: "#ccc", fontWeight: 600 }}>{totalHours}h</span>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
+              <span style={{ color: "var(--text)", fontWeight: 600 }}>{entries.length}</span> events ·{" "}
+              <span style={{ color: "var(--text)", fontWeight: 600 }}>{totalHours}h</span>
             </span>
           )}
           {/* ICS import inline */}
@@ -397,15 +398,15 @@ export default function CalendarView({ token }) {
       </div>
 
       {/* ── day headers ── */}
-      <div style={{ display: "flex", borderBottom: "1px solid #2d2d2d", background: "#1c1c1c", flexShrink: 0 }}>
+      <div style={{ display: "flex", borderBottom: "1px solid var(--cal-border)", background: "var(--cal-bg)", flexShrink: 0 }}>
         {/* time gutter spacer */}
         <div style={{ width: TIME_COL_W, flexShrink: 0 }} />
         {days.map(d => {
           const iso     = isoDate(d);
           const isToday = iso === isoDate(today);
           return (
-            <div key={iso} style={{ flex: 1, textAlign: "center", padding: "8px 4px", borderLeft: "1px solid #2d2d2d" }}>
-              <div style={{ fontSize: 11, color: "#888", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <div key={iso} style={{ flex: 1, textAlign: "center", padding: "8px 4px", borderLeft: "1px solid var(--cal-border)" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {DAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1]}
               </div>
               <div style={{
@@ -433,7 +434,7 @@ export default function CalendarView({ token }) {
             return (
               <div key={i} style={{
                 position: "absolute", top: i * HOUR_HEIGHT - 7,
-                right: 8, fontSize: 10, color: "#555", userSelect: "none", whiteSpace: "nowrap",
+                right: 8, fontSize: 10, color: "var(--muted)", userSelect: "none", whiteSpace: "nowrap",
               }}>
                 {i > 0 ? label : ""}
               </div>
@@ -450,7 +451,7 @@ export default function CalendarView({ token }) {
       </div>
 
       {/* popover */}
-      {selected && <EventPopover entry={selected} onClose={() => setSelected(null)} />}
+      {selected && <EventPopover entry={selected} onClose={() => setSelected(null)} getColor={getTaskColor} />}
     </div>
   );
 }

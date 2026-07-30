@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getEntries, updateEntry } from "../tttApi";
+import { useTheme } from "../context/ThemeContext";
 
 const PROJECT_COLORS = [
   "#2563eb", "#7c3aed", "#0891b2", "#059669",
@@ -35,13 +36,8 @@ function formatTime(t) {
 }
 
 function TaskTypePill({ type }) {
-  const map = {
-    meeting:  { bg: "#eff6ff", color: "#1d4ed8" },
-    focus:    { bg: "#f0fdf4", color: "#15803d" },
-    review:   { bg: "#fdf4ff", color: "#7e22ce" },
-    admin:    { bg: "#fff7ed", color: "#c2410c" },
-  };
-  const style = map[type] || { bg: "var(--surface)", color: "var(--muted)" };
+  const { getTaskColor } = useTheme();
+  const c = getTaskColor(type);
   return (
     <span style={{
       fontSize: 10,
@@ -50,8 +46,9 @@ function TaskTypePill({ type }) {
       borderRadius: 4,
       textTransform: "uppercase",
       letterSpacing: "0.4px",
-      background: style.bg,
-      color: style.color,
+      background: c.bg,
+      color: c.text,
+      border: `1px solid ${c.border}`,
     }}>{type}</span>
   );
 }

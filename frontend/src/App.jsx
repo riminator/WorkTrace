@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "./context/ThemeContext";
+import CustomizePanel from "./components/CustomizePanel";
 import Documents from "./components/Documents";
 import Search from "./components/Search";
 import Sources from "./components/Sources";
@@ -62,6 +63,7 @@ export default function App() {
 
             <div className="user-bar">
               <span className="user-email">{session.user.email}</span>
+              <CustomizePanel />
               <ThemeToggle />
               <button className="logout-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
 
