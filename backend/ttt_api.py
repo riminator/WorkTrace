@@ -297,12 +297,24 @@ def _parse_ics_bytes(content: bytes) -> list[dict]:
     return entries
 
 
+def _deterministic_id(user_id: str, meeting_title: str, start_time: str | None) -> str:
+    """Stable UUID derived from user + title + start_time so re-importing the
+    same calendar event is always a no-op (ON CONFLICT DO NOTHING fires)."""
+    key = f"{user_id}|{meeting_title}|{start_time or ''}"
+    return str(uuid.uuid5(uuid.NAMESPACE_OID, key))
+
+
 def _insert_entries(entries: list[dict], user_id: str, conn) -> tuple[int, int]:
     """Bulk-insert parsed entries. Returns (inserted, failed)."""
     inserted = failed = 0
     with conn.cursor() as cur:
         for e in entries:
             try:
+                entry_id = _deterministic_id(
+                    user_id,
+                    e.get("meetingTitle", ""),
+                    e.get("startTime"),
+                )
                 cur.execute("""
                     INSERT INTO time_entries
                         (id, user_id, project_code, task_type, duration_minutes,
@@ -311,7 +323,7 @@ def _insert_entries(entries: list[dict], user_id: str, conn) -> tuple[int, int]:
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (id) DO NOTHING
                 """, (
-                    str(uuid.uuid4()),
+                    entry_id,
                     user_id,
                     e.get("projectCode", "GENERAL"),
                     e.get("taskType", "meeting"),
