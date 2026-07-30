@@ -445,7 +445,7 @@ export default function CalendarView({ token }) {
         {/* day columns */}
         <div style={{ flex: 1, display: "flex", position: "relative", height: GRID_HEIGHT }}>
           {days.map(d => (
-            <DayColumn key={isoDate(d)} date={d} entries={entries} today={today} onSelect={setSelected} />
+            <DayColumn key={isoDate(d)} date={d} entries={entries} today={today} onSelect={setSelected} getColor={getTaskColor} />
           ))}
         </div>
       </div>
