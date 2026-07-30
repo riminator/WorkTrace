@@ -358,7 +358,7 @@ export default function CalendarView({ token }) {
   })();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", minHeight: 500, background: "#141414", borderRadius: 8, overflow: "hidden", border: "1px solid #2d2d2d" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", minHeight: 500, background: "var(--surface)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
 
       {/* ── toolbar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#1c1c1c", borderBottom: "1px solid #2d2d2d", flexShrink: 0, flexWrap: "wrap" }}>
@@ -413,7 +413,7 @@ export default function CalendarView({ token }) {
                 width: 30, height: 30, borderRadius: "50%", marginTop: 2,
                 background: isToday ? "#6264a7" : "transparent",
                 fontSize: 16, fontWeight: 700,
-                color: isToday ? "#fff" : "#d0d0d0",
+                color: isToday ? "#fff" : "var(--text)",
               }}>
                 {d.getDate()}
               </div>
@@ -651,16 +651,16 @@ function SyncScriptDownload({ token }) {
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => handleDownload("mac")}
-              style={{ padding: "7px 14px", background: "#292929", border: "1px solid #3d3d3d", borderRadius: 4, color: "#ddd", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              style={{ padding: "7px 14px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
               🍎 Download for macOS (.py)
             </button>
             <button onClick={() => handleDownload("windows")}
-              style={{ padding: "7px 14px", background: "#292929", border: "1px solid #3d3d3d", borderRadius: 4, color: "#ddd", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              style={{ padding: "7px 14px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
               🪟 Download for Windows (.ps1)
             </button>
           </div>
-          <p style={{ margin: 0, fontSize: 11, color: "#555", lineHeight: 1.6 }}>
-            macOS: <code style={{ background: "#222", padding: "1px 4px", borderRadius: 3 }}>pip install requests</code> then run the .py file. Schedule with launchd (see How to Use).
+          <p style={{ margin: 0, fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
+            macOS: <code style={{ background: "var(--surface-2)", padding: "1px 4px", borderRadius: 3 }}>pip install requests</code> then run the .py file. Schedule with launchd (see How to Use).
           </p>
         </div>
       )}

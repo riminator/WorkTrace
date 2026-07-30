@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useTheme } from "./context/ThemeContext";
 import Documents from "./components/Documents";
 import Search from "./components/Search";
 import Sources from "./components/Sources";
@@ -61,6 +62,7 @@ export default function App() {
 
             <div className="user-bar">
               <span className="user-email">{session.user.email}</span>
+              <ThemeToggle />
               <button className="logout-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
 
               {/* Hamburger — only visible below 520px */}
@@ -115,5 +117,34 @@ export default function App() {
         {tab === "How to Use"   && <HowToUse />}
       </main>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
+  return (
+    <button
+      onClick={toggleTheme}
+      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      style={{
+        background: "none",
+        border: "1px solid #334155",
+        color: "#64748b",
+        padding: "3px 8px",
+        borderRadius: 5,
+        fontSize: 13,
+        cursor: "pointer",
+        lineHeight: 1,
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        transition: "border-color 0.12s, color 0.12s",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = "#64748b"; e.currentTarget.style.color = "#e2e8f0"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#64748b"; }}
+    >
+      {isDark ? "☀" : "☾"}
+    </button>
   );
 }
