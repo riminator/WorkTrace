@@ -60,9 +60,9 @@ export function ThemeProvider({ children }) {
     localStorage.setItem("wt-theme", theme);
   }, [theme]);
 
-  // Apply font size override to body
+  // Apply font size override — set on :root so rem/em units cascade everywhere
   useEffect(() => {
-    document.body.style.fontSize = prefs.fontSize ? `${prefs.fontSize}px` : "";
+    document.documentElement.style.fontSize = prefs.fontSize ? `${prefs.fontSize}px` : "";
   }, [prefs.fontSize]);
 
   // Apply accent color override as CSS variable
