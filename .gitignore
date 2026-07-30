@@ -42,3 +42,6 @@ openshift/secret.yaml
 testopenshift/test
 openshift/deploy.env
 kb_backup_*.sql
+
+# launchd plist — contains hardcoded JWT token and absolute local paths
+scripts/com.worktrace.outlooksync.plist

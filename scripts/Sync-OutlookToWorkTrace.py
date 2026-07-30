@@ -291,7 +291,7 @@ def post_ics(ics_content: str, url: str, token: str) -> dict:
         log.error("requests is not installed. Fix: pip install requests")
         sys.exit(1)
 
-    endpoint = url.rstrip("/") + "/api/ttt/import/ics"
+    endpoint = url.rstrip("/") + "/ttt/import/ics"
     log.info("POSTing to %s", endpoint)
 
     resp = requests.post(

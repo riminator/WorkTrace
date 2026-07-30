@@ -1,0 +1,104 @@
+# iks/frontend.yaml
+# Deployment + ClusterIP Service + Kubernetes Ingress for the React/Vite frontend.
+# nginx serves the static build on port 8080 and proxies /api/* to the backend.
+#
+# Key difference from openshift/frontend.yaml:
+#   - Replaces OCP Route with a standard Kubernetes Ingress.
+#   - IBM Kubernetes Service provides a free Ingress subdomain + TLS cert automatically:
+#       <cluster-name>.<region>.containers.appdomain.cloud
+#   - deploy.sh fills in INGRESS_SUBDOMAIN at apply time using:
+#       ibmcloud ks cluster get --cluster $IKS_CLUSTER_NAME --output json
+#
+# Apply (via deploy.sh which substitutes INGRESS_SUBDOMAIN):
+#   kubectl apply -f iks/frontend.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledgebase-frontend
+  labels:
+    app: knowledgebase-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledgebase-frontend
+  template:
+    metadata:
+      labels:
+        app: knowledgebase-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: quay.io/akshaymallibm/knowledgebase-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledgebase-frontend
+  labels:
+    app: knowledgebase-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: knowledgebase-frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+# ── Ingress ───────────────────────────────────────────────────────────────────
+# IBM IKS automatically provisions a free Ingress subdomain and a TLS secret
+# for every cluster. deploy.sh retrieves both and substitutes them below.
+# INGRESS_SUBDOMAIN and INGRESS_SECRET are replaced by envsubst in deploy.sh.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: knowledgebase
+  labels:
+    app: knowledgebase-frontend
+  annotations:
+    # Redirect plain HTTP to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Allow large file uploads (audio/video recordings up to 200 MB)
+    nginx.ingress.kubernetes.io/proxy-body-size: "200m"
+spec:
+  tls:
+    - hosts:
+        - ${INGRESS_SUBDOMAIN}
+      secretName: ${INGRESS_SECRET}
+  rules:
+    - host: ${INGRESS_SUBDOMAIN}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: knowledgebase-frontend
+                port:
+                  number: 8080

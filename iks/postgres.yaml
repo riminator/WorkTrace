@@ -1,0 +1,102 @@
+# iks/postgres.yaml
+# pgvector StatefulSet + Service for in-cluster Postgres on IKS.
+#
+# Differences from openshift/postgres.yaml:
+#   - storageClassName: ibmc-block-gold  (IKS free default block storage)
+#   - 20Gi PVC (up from 10Gi — sized for 50 users)
+#   - Removed anyuid ServiceAccount/SCC (not needed on IKS)
+#   - Removed OCP-specific initContainer permission fix (IKS allows UID 999 natively)
+#
+# Apply:
+#   kubectl apply -f iks/postgres.yaml
+#
+# Connection string (used as DATABASE_URL in the secret):
+#   postgresql://postgres:<POSTGRES_PASSWORD>@knowledgebase-postgres:5432/vector
+
+# ── PersistentVolumeClaim: 20 Gi on IBM Block Storage ────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ibmc-block-gold
+  resources:
+    requests:
+      storage: 20Gi
+---
+# ── StatefulSet ───────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: knowledgebase-postgres
+  labels:
+    app: knowledgebase-postgres
+spec:
+  serviceName: knowledgebase-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledgebase-postgres
+  template:
+    metadata:
+      labels:
+        app: knowledgebase-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "vector"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "vector"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+# ── Service: ClusterIP — internal only ───────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledgebase-postgres
+  labels:
+    app: knowledgebase-postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: knowledgebase-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
