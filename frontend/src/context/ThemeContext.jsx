@@ -27,9 +27,11 @@ export const TASK_TYPES = ["meeting", "development", "planning", "review", "admi
 // ── Default prefs ─────────────────────────────────────────────────────────────
 
 const DEFAULT_PREFS = {
-  accent:           "#6366f1",   // CSS --accent override (empty = use theme default)
-  fontSize:         "14",        // px, body font size
-  taskColors:       {},          // per task-type border color overrides, e.g. { meeting: "#ff0000" }
+  accent:    "#6366f1",
+  fontSize:  "14",
+  headerBg:  "",        // empty = use theme default (#0f172a)
+  chipColor: "",        // empty = use surface-2/border default
+  taskColors: {},
 };
 
 function loadPrefs() {
@@ -60,9 +62,9 @@ export function ThemeProvider({ children }) {
     localStorage.setItem("wt-theme", theme);
   }, [theme]);
 
-  // Apply font size override — set on :root so rem/em units cascade everywhere
+  // Apply font size via CSS variable so it overrides the static body rule
   useEffect(() => {
-    document.documentElement.style.fontSize = prefs.fontSize ? `${prefs.fontSize}px` : "";
+    document.documentElement.style.setProperty("--font-size", `${prefs.fontSize || 14}px`);
   }, [prefs.fontSize]);
 
   // Apply accent color override as CSS variable
@@ -78,6 +80,31 @@ export function ThemeProvider({ children }) {
       document.documentElement.style.removeProperty("--border-focus");
     }
   }, [prefs.accent]);
+
+  // Apply header background override
+  useEffect(() => {
+    if (prefs.headerBg) {
+      document.documentElement.style.setProperty("--header-bg", prefs.headerBg);
+      // auto-darken for border: add 20% black overlay via a slightly darker shade
+      document.documentElement.style.setProperty("--header-border", prefs.headerBg + "cc");
+    } else {
+      document.documentElement.style.removeProperty("--header-bg");
+      document.documentElement.style.removeProperty("--header-border");
+    }
+  }, [prefs.headerBg]);
+
+  // Apply chip color override
+  useEffect(() => {
+    if (prefs.chipColor) {
+      document.documentElement.style.setProperty("--chip-bg",     prefs.chipColor + "22");
+      document.documentElement.style.setProperty("--chip-border",  prefs.chipColor);
+      document.documentElement.style.setProperty("--chip-text",    prefs.chipColor);
+    } else {
+      document.documentElement.style.removeProperty("--chip-bg");
+      document.documentElement.style.removeProperty("--chip-border");
+      document.documentElement.style.removeProperty("--chip-text");
+    }
+  }, [prefs.chipColor]);
 
   function setPrefs(update) {
     setPrefsState(prev => {

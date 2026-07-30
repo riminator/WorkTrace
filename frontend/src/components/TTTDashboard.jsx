@@ -546,13 +546,17 @@ export default function TTTDashboard({ token }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
                         <span style={{
                           fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4,
-                          background: "var(--surface-2)", border: "1px solid var(--border)",
-                          color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px",
+                          background: "var(--chip-bg, var(--surface-2))",
+                          border: "1px solid var(--chip-border, var(--border))",
+                          color: "var(--chip-text, var(--muted))",
+                          textTransform: "uppercase", letterSpacing: "0.4px",
                         }}>{e.projectCode}</span>
                         <span style={{
                           fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4,
-                          background: "var(--surface-2)", border: "1px solid var(--border)",
-                          color: "var(--muted)", letterSpacing: "0.2px",
+                          background: "var(--chip-bg, var(--surface-2))",
+                          border: "1px solid var(--chip-border, var(--border))",
+                          color: "var(--chip-text, var(--muted))",
+                          letterSpacing: "0.2px",
                         }}>{formatDate(e.date)}</span>
                         <TaskTypePill type={e.taskType} />
                       </div>

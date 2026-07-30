@@ -47,7 +47,7 @@ export default function CustomizePanel() {
   }, [open]);
 
   function resetAll() {
-    setPrefs({ accent: "#6366f1", fontSize: "14", taskColors: {} });
+    setPrefs({ accent: "#6366f1", fontSize: "14", headerBg: "", chipColor: "", taskColors: {} });
   }
 
   const defaults = theme === "dark" ? DEFAULT_TASK_COLORS_DARK : DEFAULT_TASK_COLORS_LIGHT;
@@ -154,6 +154,82 @@ export default function CustomizePanel() {
                   <input type="color" value={prefs.accent} onChange={e => setPrefs({ accent: e.target.value })}
                     style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer" }} />
                 </label>
+              </div>
+            </Section>
+
+            {/* ── Header color ── */}
+            <Section label="Header color">
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {[
+                  { label: "Default",  value: "" },
+                  { label: "Navy",     value: "#0f172a" },
+                  { label: "Black",    value: "#09090b" },
+                  { label: "Indigo",   value: "#312e81" },
+                  { label: "Slate",    value: "#1e293b" },
+                  { label: "Green",    value: "#14532d" },
+                  { label: "Rose",     value: "#881337" },
+                ].map(p => (
+                  <button
+                    key={p.value}
+                    onClick={() => setPrefs({ headerBg: p.value })}
+                    title={p.label}
+                    style={{
+                      width: 26, height: 26, borderRadius: "50%", flexShrink: 0, padding: 0, cursor: "pointer",
+                      background: p.value || "#0f172a",
+                      border: prefs.headerBg === p.value ? "2.5px solid var(--text)" : "2.5px solid transparent",
+                      boxShadow: prefs.headerBg === p.value ? "0 0 0 2px var(--bg)" : "none",
+                      outline: "none",
+                    }}
+                  />
+                ))}
+                <label title="Custom" style={{ position: "relative", width: 26, height: 26, borderRadius: "50%", overflow: "hidden", cursor: "pointer", border: "2px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--muted)", flexShrink: 0 }}>
+                  +
+                  <input type="color" value={prefs.headerBg || "#0f172a"} onChange={e => setPrefs({ headerBg: e.target.value })}
+                    style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer" }} />
+                </label>
+              </div>
+            </Section>
+
+            {/* ── Chip color (project / date badges) ── */}
+            <Section label="Badge color (project & date)">
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => setPrefs({ chipColor: "" })}
+                  style={{
+                    padding: "3px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                    background: !prefs.chipColor ? "var(--accent)" : "var(--surface-2)",
+                    color: !prefs.chipColor ? "#fff" : "var(--muted)",
+                    border: !prefs.chipColor ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+                    fontWeight: 600,
+                  }}
+                >Default</button>
+                {["#6366f1","#3b82f6","#10b981","#f97316","#f43f5e","#8b5cf6","#0ea5e9"].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setPrefs({ chipColor: c })}
+                    title={c}
+                    style={{
+                      width: 26, height: 26, borderRadius: "50%", flexShrink: 0, padding: 0, cursor: "pointer",
+                      background: c,
+                      border: prefs.chipColor === c ? "2.5px solid var(--text)" : "2.5px solid transparent",
+                      boxShadow: prefs.chipColor === c ? "0 0 0 2px var(--bg)" : "none",
+                      outline: "none",
+                    }}
+                  />
+                ))}
+                <label title="Custom" style={{ position: "relative", width: 26, height: 26, borderRadius: "50%", overflow: "hidden", cursor: "pointer", border: "2px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--muted)", flexShrink: 0 }}>
+                  +
+                  <input type="color" value={prefs.chipColor || "#6b7280"} onChange={e => setPrefs({ chipColor: e.target.value })}
+                    style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer" }} />
+                </label>
+                {/* Live preview */}
+                <span style={{
+                  fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 4,
+                  background: prefs.chipColor ? prefs.chipColor + "22" : "var(--surface-2)",
+                  border: `1px solid ${prefs.chipColor || "var(--border)"}`,
+                  color: prefs.chipColor || "var(--muted)",
+                  textTransform: "uppercase", letterSpacing: "0.4px",
+                }}>GENERAL</span>
               </div>
             </Section>
 

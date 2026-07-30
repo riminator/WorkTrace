@@ -1,5 +1,8 @@
 /* ── Design tokens — light (default) ─────────────────────────── */
 :root {
+  --font-size:    14px;
+  --header-bg:    #0f172a;
+  --header-border:#1e293b;
   --bg:           #ffffff;
   --surface:      #f8f9fb;
   --surface-2:    #f1f3f7;
@@ -68,7 +71,7 @@
 
 body {
   font-family: var(--font);
-  font-size: 14px;
+  font-size: var(--font-size);
   line-height: 1.6;
   color: var(--text);
   background: var(--surface);
@@ -89,8 +92,8 @@ body {
 
 /* ── Header ─────────────────────────────────────────────────── */
 .header {
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
   position: sticky;
   top: 0;
   z-index: 100;
