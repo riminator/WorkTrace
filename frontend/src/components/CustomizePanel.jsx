@@ -12,13 +12,6 @@ const ACCENT_PRESETS = [
   { label: "Amber",   value: "#f59e0b" },
 ];
 
-const FONT_SIZES = [
-  { label: "Small",   value: "12" },
-  { label: "Default", value: "14" },
-  { label: "Large",   value: "16" },
-  { label: "XL",      value: "18" },
-];
-
 // Friendly label for each task type
 const TYPE_LABELS = {
   meeting:     "Meeting",
@@ -231,27 +224,6 @@ export default function CustomizePanel() {
                   color: prefs.chipColor || "var(--muted)",
                   textTransform: "uppercase", letterSpacing: "0.4px",
                 }}>GENERAL</span>
-              </div>
-            </Section>
-
-            {/* ── Font size ── */}
-            <Section label="Font size">
-              <div style={{ display: "flex", gap: 6 }}>
-                {FONT_SIZES.map(f => (
-                  <button
-                    key={f.value}
-                    onClick={() => setPrefs({ fontSize: f.value })}
-                    style={{
-                      flex: 1, padding: "5px 0", borderRadius: 6, fontSize: 12, fontWeight: 500,
-                      cursor: "pointer", transition: "all 0.12s",
-                      background: prefs.fontSize === f.value ? "var(--accent)" : "var(--surface-2)",
-                      color: prefs.fontSize === f.value ? "#fff" : "var(--text-2)",
-                      border: prefs.fontSize === f.value ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                ))}
               </div>
             </Section>
 

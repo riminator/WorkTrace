@@ -28,9 +28,8 @@ export const TASK_TYPES = ["meeting", "development", "planning", "review", "admi
 
 const DEFAULT_PREFS = {
   accent:    "#6366f1",
-  fontSize:  "14",
-  headerBg:  "",        // empty = use theme default (#0f172a)
-  chipColor: "",        // empty = use surface-2/border default
+  headerBg:  "",
+  chipColor: "",
   taskColors: {},
 };
 
@@ -61,13 +60,6 @@ export function ThemeProvider({ children }) {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("wt-theme", theme);
   }, [theme]);
-
-  // Apply font size — set both the CSS var AND body directly to ensure it takes effect
-  useEffect(() => {
-    const px = `${prefs.fontSize || 14}px`;
-    document.documentElement.style.setProperty("--font-size", px);
-    document.body.style.setProperty("font-size", px, "important");
-  }, [prefs.fontSize]);
 
   // Apply accent color override as CSS variable
   useEffect(() => {

@@ -1,6 +1,5 @@
 /* ── Design tokens — light (default) ─────────────────────────── */
 :root {
-  --font-size:    14px;
   --header-bg:    #0f172a;
   --header-border:#1e293b;
   --bg:           #ffffff;
@@ -71,7 +70,7 @@
 
 body {
   font-family: var(--font);
-  font-size: var(--font-size);
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
   background: var(--surface);
