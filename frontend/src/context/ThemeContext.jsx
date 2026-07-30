@@ -62,9 +62,11 @@ export function ThemeProvider({ children }) {
     localStorage.setItem("wt-theme", theme);
   }, [theme]);
 
-  // Apply font size via CSS variable so it overrides the static body rule
+  // Apply font size — set both the CSS var AND body directly to ensure it takes effect
   useEffect(() => {
-    document.documentElement.style.setProperty("--font-size", `${prefs.fontSize || 14}px`);
+    const px = `${prefs.fontSize || 14}px`;
+    document.documentElement.style.setProperty("--font-size", px);
+    document.body.style.setProperty("font-size", px, "important");
   }, [prefs.fontSize]);
 
   // Apply accent color override as CSS variable

@@ -13,9 +13,10 @@ const ACCENT_PRESETS = [
 ];
 
 const FONT_SIZES = [
-  { label: "Small",   value: "13" },
+  { label: "Small",   value: "12" },
   { label: "Default", value: "14" },
-  { label: "Large",   value: "15" },
+  { label: "Large",   value: "16" },
+  { label: "XL",      value: "18" },
 ];
 
 // Friendly label for each task type
